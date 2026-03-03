@@ -1,0 +1,204 @@
+{
+  "projectType": "framework",
+  "projectName": "Alchemy",
+  "projectDescription": "TypeScript-native Infrastructure-as-Code framework for modeling cloud resources with automatic lifecycle management",
+  "theme": "aspen",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#7C3AED",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/resources",
+              "concepts/scopes",
+              "concepts/secrets",
+              "concepts/state-management",
+              "concepts/lifecycle"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "providers/overview",
+              "providers/cloudflare",
+              "providers/aws",
+              "providers/neon",
+              "providers/planetscale",
+              "providers/vercel",
+              "providers/github",
+              "providers/stripe",
+              "providers/upstash"
+            ]
+          },
+          {
+            "group": "Framework Integrations",
+            "pages": [
+              "integrations/vite",
+              "integrations/astro",
+              "integrations/nextjs",
+              "integrations/nuxt",
+              "integrations/sveltekit",
+              "integrations/react-router",
+              "integrations/redwood",
+              "integrations/tanstack-start"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-resources",
+              "guides/managing-secrets",
+              "guides/local-development",
+              "guides/testing",
+              "guides/custom-providers",
+              "guides/monorepo-setup",
+              "guides/deployment"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/alchemy",
+              "api/resource",
+              "api/scope",
+              "api/secret",
+              "api/context"
+            ]
+          },
+          {
+            "group": "Cloudflare",
+            "pages": [
+              "api/cloudflare/worker",
+              "api/cloudflare/durable-object",
+              "api/cloudflare/queue",
+              "api/cloudflare/r2-bucket",
+              "api/cloudflare/kv-namespace",
+              "api/cloudflare/d1-database",
+              "api/cloudflare/workflow",
+              "api/cloudflare/hyperdrive",
+              "api/cloudflare/vectorize",
+              "api/cloudflare/ai-search",
+              "api/cloudflare/custom-domain",
+              "api/cloudflare/container"
+            ]
+          },
+          {
+            "group": "AWS",
+            "pages": [
+              "api/aws/function",
+              "api/aws/bucket",
+              "api/aws/table",
+              "api/aws/queue",
+              "api/aws/role",
+              "api/aws/policy"
+            ]
+          },
+          {
+            "group": "Databases",
+            "pages": [
+              "api/databases/neon",
+              "api/databases/planetscale",
+              "api/databases/prisma-postgres",
+              "api/databases/clickhouse"
+            ]
+          },
+          {
+            "group": "Services",
+            "pages": [
+              "api/services/github",
+              "api/services/stripe",
+              "api/services/sentry",
+              "api/services/vercel",
+              "api/services/upstash"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utilities/esbuild",
+              "api/utilities/docker",
+              "api/utilities/dns",
+              "api/utilities/fs",
+              "api/utilities/os"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Examples",
+        "groups": [
+          {
+            "group": "Cloudflare Examples",
+            "pages": [
+              "examples/cloudflare-worker",
+              "examples/cloudflare-vite",
+              "examples/cloudflare-nextjs",
+              "examples/cloudflare-astro",
+              "examples/cloudflare-durable-objects",
+              "examples/cloudflare-workflows"
+            ]
+          },
+          {
+            "group": "AWS Examples",
+            "pages": [
+              "examples/aws-lambda",
+              "examples/aws-fullstack"
+            ]
+          },
+          {
+            "group": "Full-Stack Examples",
+            "pages": [
+              "examples/react-router-app",
+              "examples/redwood-app",
+              "examples/sveltekit-app",
+              "examples/nuxt-app"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "TypeScript-native infrastructure as code with zero additional tooling",
+    "Async-first resource management with automatic lifecycle handling",
+    "Multiple cloud providers (Cloudflare, AWS, Vercel, etc.) in one framework",
+    "Built-in secret encryption and secure state management",
+    "Framework integrations for Vite, Astro, Next.js, and more",
+    "Local development mode with Miniflare for testing",
+    "ESM-native and embeddable in any JavaScript runtime",
+    "Extensible resource system for custom providers"
+  ],
+  "publicApiSurface": [
+    "alchemy() - Main entry point for creating application scopes",
+    "Resource() - Base function for creating custom resources",
+    "Worker() - Deploy Cloudflare Workers",
+    "DurableObjectNamespace() - Create Cloudflare Durable Objects",
+    "Queue() - Create message queues",
+    "R2Bucket() - Create object storage",
+    "D1Database() - Create SQLite databases",
+    "Workflow() - Create Cloudflare Workflows",
+    "Function() - Deploy AWS Lambda functions",
+    "Table() - Create DynamoDB tables",
+    "alchemy.secret() - Create encrypted secrets",
+    "alchemy.env() - Access environment variables",
+    "Scope.finalize() - Complete resource lifecycle"
+  ]
+}
