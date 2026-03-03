@@ -1,0 +1,173 @@
+---
+title: Nuxt
+description: Deploy Nuxt applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [Nuxt](https://nuxt.com/) applications to Cloudflare Workers using the `cloudflare-module` preset.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy nuxt nitro-cloudflare-dev
+```
+
+## Configuration
+
+<Steps>
+
+### Configure Nuxt Preset
+
+Add the Alchemy configuration to your `nuxt.config.ts`:
+
+```ts
+import alchemy from "alchemy/cloudflare/nuxt";
+import { defineNuxtConfig } from "nuxt/config";
+
+export default defineNuxtConfig({
+  devtools: { enabled: true },
+  nitro: {
+    preset: "cloudflare_module",
+    cloudflare: alchemy(),
+  },
+  modules: ["nitro-cloudflare-dev"],
+});
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { D1Database, KVNamespace, Nuxt } from "alchemy/cloudflare";
+
+const app = await alchemy("my-nuxt-app");
+
+const [db, sessions] = await Promise.all([
+  D1Database("database", {
+    name: `${app.name}-${app.stage}-db`,
+  }),
+  KVNamespace("sessions", {
+    title: `${app.name}-${app.stage}-sessions`,
+  }),
+]);
+
+const website = await Nuxt("website", {
+  bindings: {
+    DB: db,
+    SESSIONS: sessions,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`build`**: Build command override
+  - Default: `nuxt build`
+- **`dev`**: Dev command override
+  - Default: `nuxt dev`
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `.output/server/index.mjs`
+- **`assets`**: Static assets directory
+  - Default: `.output/public`
+- **`noBundle`**: Skip bundling
+  - Default: `true`
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your Nuxt application:
+
+```ts
+export default defineEventHandler(async (event) => {
+  const db = event.context.cloudflare.env.DB;
+  const result = await db.prepare("SELECT * FROM users").all();
+  
+  return result.results;
+});
+```
+
+## Local Development
+
+The `nitro-cloudflare-dev` module provides:
+
+- Local emulation of Cloudflare bindings
+- Hot module replacement
+- Development server with platform context
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+## Node.js Compatibility
+
+The Nuxt resource automatically sets `compatibility: "node"` for Node.js API support.
+
+This enables:
+
+- Node.js built-in modules
+- npm packages that depend on Node.js APIs
+- Full Nuxt feature set
+
+## Build Optimization
+
+Customize the build process:
+
+```ts
+const website = await Nuxt("website", {
+  build: {
+    command: "nuxt build --preset cloudflare_module",
+    env: {
+      NODE_ENV: "production",
+    },
+  },
+});
+```
+
+## Server Routes
+
+Create server API routes in `server/api/`:
+
+```ts
+// server/api/users.ts
+export default defineEventHandler(async (event) => {
+  const { DB } = event.context.cloudflare.env;
+  const users = await DB.prepare("SELECT * FROM users").all();
+  return users.results;
+});
+```
+
+## Deployment Best Practices
+
+- Use environment variables for secrets
+- Configure bindings in `alchemy.run.ts`
+- Test locally with `nitro-cloudflare-dev`
+- Keep `.output` directory in `.gitignore`
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage

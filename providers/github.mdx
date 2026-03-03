@@ -1,0 +1,160 @@
+---
+title: GitHub provider
+description: Manage repository webhooks and deployment environments
+---
+
+The GitHub provider enables you to manage repository webhooks, deployment environments, and other GitHub resources through the GitHub API.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Create a GitHub personal access token at [github.com/settings/tokens](https://github.com/settings/tokens) with appropriate scopes and set it as an environment variable:
+
+```bash
+export GITHUB_TOKEN="your-personal-access-token"
+```
+
+<Tip>
+For webhooks and environments, you'll need `repo` scope. For organization resources, you may need `admin:org`.
+</Tip>
+
+## Available resources
+
+- **RepositoryWebhook** - Repository webhooks for events
+- **RepositoryEnvironment** - Deployment environments with protection rules
+- **Comment** - Issue and PR comments
+
+## Example usage
+
+### Repository webhooks
+
+```typescript
+import alchemy from "alchemy";
+import { RepositoryWebhook } from "alchemy/github";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("github-integration");
+
+// Create a Worker to receive webhooks
+const webhook = await Worker("webhook-handler", {
+  entrypoint: "./src/webhook.ts",
+  url: true,
+});
+
+// Configure a GitHub webhook
+const repoWebhook = await RepositoryWebhook("repo-webhook", {
+  owner: "your-username",
+  repo: "your-repository",
+  config: {
+    url: webhook.url,
+    content_type: "json",
+    secret: alchemy.secret.env.WEBHOOK_SECRET,
+  },
+  events: ["push", "pull_request", "issues"],
+  active: true,
+});
+
+console.log(`Webhook ID: ${repoWebhook.id}`);
+
+await app.finalize();
+```
+
+### Deployment environments
+
+```typescript
+import { RepositoryEnvironment } from "alchemy/github";
+
+// Create a production environment with protection rules
+const prodEnv = await RepositoryEnvironment("production", {
+  owner: "your-username",
+  repo: "your-repository",
+  environment: "production",
+  wait_timer: 0,
+  reviewers: [
+    { type: "User", id: 123456 },
+  ],
+  deployment_branch_policy: {
+    protected_branches: true,
+    custom_branch_policies: false,
+  },
+});
+
+// Create a staging environment
+const stagingEnv = await RepositoryEnvironment("staging", {
+  owner: "your-username",
+  repo: "your-repository",
+  environment: "staging",
+});
+```
+
+### Environment variables
+
+Set environment-specific secrets:
+
+```typescript
+const env = await RepositoryEnvironment("production", {
+  owner: "your-username",
+  repo: "your-repository",
+  environment: "production",
+});
+
+// Secrets can be set via GitHub API
+// Use env.id to reference the environment
+```
+
+## Webhook security
+
+Validate webhook signatures in your handler:
+
+```typescript
+// In your webhook Worker
+export default {
+  async fetch(request: Request, env: Env) {
+    const signature = request.headers.get("x-hub-signature-256");
+    const body = await request.text();
+    
+    // Verify signature using WEBHOOK_SECRET
+    const isValid = await verifySignature(
+      body,
+      signature,
+      env.WEBHOOK_SECRET
+    );
+    
+    if (!isValid) {
+      return new Response("Invalid signature", { status: 401 });
+    }
+    
+    const event = JSON.parse(body);
+    // Handle webhook event
+    
+    return new Response("OK");
+  },
+};
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="GitHub API" icon="github" href="/api/services/github">
+    Complete API reference
+  </Card>
+  <Card title="Webhooks guide" icon="webhook" href="/guides/creating-resources">
+    Learn about resource patterns
+  </Card>
+</CardGroup>

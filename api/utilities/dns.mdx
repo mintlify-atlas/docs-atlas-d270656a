@@ -1,0 +1,218 @@
+---
+title: "DNS"
+description: "Import and manage DNS records"
+---
+
+## ImportDnsRecords
+
+Import DNS records for a domain using Cloudflare's DNS-over-HTTPS API. This resource allows you to fetch DNS records for a domain and store them in a structured format that's compatible with DNS management functions.
+
+### Properties
+
+<ParamField path="domain" type="string" required>
+  The domain to fetch DNS records for (e.g., "example.com").
+</ParamField>
+
+<ParamField path="recordTypes" type="DnsRecordType[]">
+  Specific record types to fetch. If not provided, defaults to all supported types.
+  
+  Supported types:
+  - `"A"` - IPv4 address
+  - `"AAAA"` - IPv6 address
+  - `"MX"` - Mail exchange
+  - `"TXT"` - Text record
+  - `"NS"` - Nameserver
+  - `"CNAME"` - Canonical name
+  - `"SOA"` - Start of authority
+  - `"SRV"` - Service record
+  - `"PTR"` - Pointer record
+  
+  **Default:** All supported types
+</ParamField>
+
+<ParamField path="bump" type="number">
+  Bump the resource to force a new import. Increment this value to re-fetch DNS records.
+</ParamField>
+
+### Returns
+
+<ResponseField name="records" type="DnsApiRecord[]">
+  The DNS records as a flat array. Each record contains:
+  - `name`: Record name
+  - `type`: Record type
+  - `TTL`: Time to live
+  - `data`: Raw record data
+  - `content`: Record content (compatible with DNS management)
+  - `ttl`: Normalized TTL value
+  - `priority`: Priority for MX/SRV records (optional)
+</ResponseField>
+
+<ResponseField name="importedAt" type="number">
+  Timestamp when the records were imported.
+</ResponseField>
+
+### Examples
+
+#### Import all DNS records
+
+```typescript
+const allRecords = await ImportDnsRecords("example.com", {
+  domain: "example.com"
+});
+
+console.log(allRecords.records);
+// [
+//   { name: "example.com", type: "A", content: "192.0.2.1", ttl: 300, ... },
+//   { name: "mail.example.com", type: "MX", content: "mail.example.com", priority: 10, ... },
+//   ...
+// ]
+```
+
+#### Import specific record types
+
+```typescript
+const mailRecords = await ImportDnsRecords("example.com", {
+  domain: "example.com",
+  recordTypes: ["A", "MX"]
+});
+
+console.log(mailRecords.records.filter(r => r.type === "MX"));
+```
+
+#### Import and transfer to Cloudflare
+
+```typescript
+import { Zone, DnsRecords } from "alchemy/cloudflare";
+
+// Import DNS records from current provider
+const dnsRecords = await ImportDnsRecords("dns-records", {
+  domain: "example.com",
+});
+
+// Create Cloudflare zone
+const zone = await Zone("example.com", {
+  name: "example.com",
+  type: "full",
+});
+
+// Transfer records to Cloudflare (records are directly compatible)
+await DnsRecords("transfer-dns-records", {
+  zoneId: zone.id,
+  records: dnsRecords.records,
+});
+
+console.log(`Transferred ${dnsRecords.records.length} DNS records to Cloudflare`);
+```
+
+#### Force re-import with bump
+
+```typescript
+// Initial import
+const records1 = await ImportDnsRecords("example.com", {
+  domain: "example.com",
+  bump: 1
+});
+
+// Later, force a new import by incrementing bump
+const records2 = await ImportDnsRecords("example.com", {
+  domain: "example.com",
+  bump: 2  // This will trigger a fresh fetch
+});
+```
+
+---
+
+## DNS Record Types
+
+The DNS utilities support the following record types:
+
+### A Record
+Maps a domain name to an IPv4 address.
+
+```typescript
+{
+  name: "example.com",
+  type: "A",
+  content: "192.0.2.1",
+  ttl: 300
+}
+```
+
+### AAAA Record
+Maps a domain name to an IPv6 address.
+
+```typescript
+{
+  name: "example.com",
+  type: "AAAA",
+  content: "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+  ttl: 300
+}
+```
+
+### MX Record
+Specifies mail servers for the domain.
+
+```typescript
+{
+  name: "example.com",
+  type: "MX",
+  content: "mail.example.com",
+  priority: 10,
+  ttl: 300
+}
+```
+
+### CNAME Record
+Creates an alias from one domain to another.
+
+```typescript
+{
+  name: "www.example.com",
+  type: "CNAME",
+  content: "example.com",
+  ttl: 300
+}
+```
+
+### TXT Record
+Stores text information, often used for verification and policies.
+
+```typescript
+{
+  name: "example.com",
+  type: "TXT",
+  content: "v=spf1 include:_spf.example.com ~all",
+  ttl: 300
+}
+```
+
+---
+
+## GoDaddy Utilities
+
+Update nameservers for domains registered with GoDaddy.
+
+### updateNameservers
+
+Update the nameservers for a GoDaddy domain.
+
+```typescript
+import { updateNameservers } from "alchemy/dns/godaddy";
+
+await updateNameservers({
+  domain: "example.com",
+  apiKey: process.env.GODADDY_API_KEY,
+  apiSecret: process.env.GODADDY_API_SECRET,
+  nameservers: [
+    "ns1.cloudflare.com",
+    "ns2.cloudflare.com"
+  ]
+});
+```
+
+**Parameters:**
+- `domain`: Domain name to update
+- `apiKey`: GoDaddy API key
+- `apiSecret`: GoDaddy API secret
+- `nameservers`: Array of nameserver hostnames

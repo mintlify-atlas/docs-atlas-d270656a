@@ -1,0 +1,172 @@
+---
+title: Cloudflare Vite
+description: Deploy a Vite application to Cloudflare with KV storage and environment bindings
+---
+
+# Cloudflare Vite Example
+
+This example shows how to deploy a Vite application to Cloudflare Workers with KV Namespace bindings and environment variables.
+
+## Features
+
+- **Vite**: Modern frontend build tool with HMR
+- **KV Namespace**: Key-value storage for the application
+- **Environment Bindings**: Secrets and configuration
+- **Local Development**: Vite dev server integration
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install -D vite
+```
+
+### Create alchemy.run.ts
+
+Create your infrastructure configuration:
+
+```ts
+import alchemy from "alchemy";
+import { KVNamespace, Vite, Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-vite");
+
+export const kv = await KVNamespace("kv", {
+  title: `${app.name}-${app.stage}-kv`,
+  adopt: true,
+});
+
+export const website = await Vite("website", {
+  entrypoint: "src/index.ts",
+  noBundle: false,
+  adopt: true,
+  bindings: {
+    KV: kv,
+    ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+    VITE_PUBLIC_DOMAIN: Worker.DevDomain,
+  },
+  dev: {
+    command: "vite dev --port 5006",
+    domain: "localhost:5006",
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+if (process.env.ALCHEMY_E2E) {
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  const { test } = await import("./test/e2e.js");
+  await test({
+    url: website.url,
+    env: { ALCHEMY_TEST_VALUE: "Hello from Alchemy!" },
+  });
+}
+
+await app.finalize();
+```
+
+### Create Worker Entrypoint
+
+Create `src/index.ts` as your Cloudflare Worker handler:
+
+```ts
+import type { website } from "../alchemy.run.ts";
+
+export default {
+  async fetch(request: Request, env: typeof website.Env) {
+    // Access KV namespace
+    await env.KV.put("visit-count", "1");
+    const count = await env.KV.get("visit-count");
+
+    // Access secrets
+    const message = env.ALCHEMY_TEST_VALUE;
+
+    return new Response(
+      JSON.stringify({
+        message,
+        visitCount: count,
+        domain: env.VITE_PUBLIC_DOMAIN,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  },
+};
+```
+
+### Configure Vite
+
+Create `vite.config.ts`:
+
+```ts
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  server: {
+    port: 5006,
+  },
+});
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+For local development:
+
+```bash
+npm exec tsx alchemy.run.ts --local
+```
+
+</Steps>
+
+## Key Features Explained
+
+### KV Namespace Adoption
+
+The `adopt: true` flag allows reusing existing KV namespaces:
+
+```ts
+export const kv = await KVNamespace("kv", {
+  title: `${app.name}-${app.stage}-kv`,
+  adopt: true,
+});
+```
+
+### Environment Variables
+
+Secrets and configuration are passed via bindings:
+
+```ts
+bindings: {
+  KV: kv,
+  ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+  VITE_PUBLIC_DOMAIN: Worker.DevDomain,
+}
+```
+
+### Local Development
+
+The `dev` configuration integrates with Vite's dev server:
+
+```ts
+dev: {
+  command: "vite dev --port 5006",
+  domain: "localhost:5006",
+}
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-vite](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-vite)

@@ -1,0 +1,604 @@
+---
+title: State Management
+description: How Alchemy tracks and persists infrastructure state across deployments
+---
+
+# State Management
+
+Alchemy maintains a persistent state file for each resource to track infrastructure across deployments. This state enables Alchemy to detect changes, perform updates, and clean up orphaned resources.
+
+## What is State?
+
+State in Alchemy is a JSON representation of your deployed infrastructure that includes:
+
+- **Resource metadata**: ID, type, fully qualified name
+- **Resource props**: Input parameters from previous deployment
+- **Resource output**: Actual values returned by the provider
+- **Custom data**: Additional state stored by resources
+- **Status**: Current lifecycle status of the resource
+
+<Note>
+  State files are how Alchemy knows what's already deployed and what needs to change.
+</Note>
+
+## State Structure
+
+Each resource's state follows this structure:
+
+```typescript
+interface State {
+  // Resource type (e.g., "cloudflare::Worker")
+  kind: string;
+  
+  // Logical ID
+  id: string;
+  
+  // Fully qualified name (e.g., "my-app/dev/api")
+  fqn: string;
+  
+  // Sequence number for ordering
+  seq: number;
+  
+  // Current lifecycle status
+  status: "creating" | "created" | "updating" | "updated" | "deleting" | "deleted";
+  
+  // Input props from last deployment
+  props: ResourceProps;
+  
+  // Previous props (used during updates)
+  oldProps?: ResourceProps;
+  
+  // Resource output from provider
+  output: Resource;
+  
+  // Custom state data
+  data: Record<string, any>;
+}
+```
+
+## Where State is Stored
+
+By default, state is stored in the `.alchemy` directory:
+
+```
+.alchemy/
+  my-app/
+    dev/
+      api.json          # Worker resource state
+      database.json     # Database resource state
+    prod/
+      api.json
+      database.json
+```
+
+Each file contains the state for one resource in one stage.
+
+<Info>
+  The `.alchemy` directory should be added to `.gitignore` for local development. For production, use a persistent state store.
+</Info>
+
+## State Lifecycle
+
+### Creating State
+
+When a resource is first created:
+
+<Steps>
+  <Step title="Resource creation">
+    Alchemy invokes the resource handler in "create" phase
+  </Step>
+  <Step title="State initialization">
+    State file is created with status "creating"
+  </Step>
+  <Step title="Provider call">
+    Resource is provisioned via the provider's API
+  </Step>
+  <Step title="State persistence">
+    Final state is saved with status "created" and output values
+  </Step>
+</Steps>
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// State file: .alchemy/my-app/dev/api.json created
+```
+
+### Updating State
+
+When resource props change:
+
+<Steps>
+  <Step title="State comparison">
+    Alchemy compares new props with props in state
+  </Step>
+  <Step title="Update detection">
+    If different, resource handler is called in "update" phase
+  </Step>
+  <Step title="State update">
+    Previous props are stored in `oldProps`, new props replace `props`
+  </Step>
+  <Step title="Provider update">
+    Resource is updated via provider API
+  </Step>
+  <Step title="State save">
+    Updated state is persisted with new output values
+  </Step>
+</Steps>
+
+```typescript
+// First deployment
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  compatibilityFlags: ["nodejs_compat"]
+});
+
+// Second deployment - props changed
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  compatibilityFlags: ["nodejs_compat", "streams_enable_constructors"]
+});
+// Worker is updated, state reflects new props
+```
+
+### Deleting State
+
+When a resource is removed from code:
+
+<Steps>
+  <Step title="Orphan detection">
+    During finalization, Alchemy detects resources in state but not in code
+  </Step>
+  <Step title="Deletion phase">
+    Resource handler is called with phase "delete"
+  </Step>
+  <Step title="Cleanup">
+    Resource is destroyed via provider API
+  </Step>
+  <Step title="State removal">
+    State file is deleted
+  </Step>
+</Steps>
+
+```typescript
+// First deployment
+const worker = await Worker("api", { ... });
+const bucket = await R2Bucket("storage", { ... });
+
+// Second deployment - bucket removed
+const worker = await Worker("api", { ... });
+// During finalization:
+// - bucket is identified as orphaned
+// - bucket is destroyed
+// - bucket.json is deleted
+```
+
+## State Stores
+
+Alchemy supports pluggable state storage backends.
+
+### File System State Store (Default)
+
+Stores state in local `.alchemy` directory:
+
+```typescript
+const app = await alchemy("my-app");
+// Uses FileSystemStateStore by default
+```
+
+<Warning>
+  File system state is not suitable for team environments or CI/CD. Use a persistent state store for production.
+</Warning>
+
+### Cloudflare State Store
+
+Stores state in Cloudflare KV:
+
+```typescript
+import { CloudflareStateStore } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new CloudflareStateStore(scope, {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+    apiToken: process.env.CLOUDFLARE_API_TOKEN!,
+    namespaceId: process.env.STATE_KV_NAMESPACE_ID!
+  })
+});
+```
+
+### AWS S3 State Store
+
+Stores state in S3:
+
+```typescript
+import { S3StateStore } from "alchemy/aws";
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new S3StateStore(scope, {
+    bucket: "my-alchemy-state",
+    region: "us-east-1"
+  })
+});
+```
+
+### Custom State Store
+
+Implement your own state store:
+
+```typescript
+import type { StateStore, Scope, State } from "alchemy";
+
+class MyStateStore implements StateStore {
+  constructor(private scope: Scope) {}
+
+  async init(): Promise<void> {
+    // Initialize storage backend
+  }
+
+  async deinit(): Promise<void> {
+    // Cleanup storage backend
+  }
+
+  async list(): Promise<string[]> {
+    // Return all resource IDs
+  }
+
+  async count(): Promise<number> {
+    // Return number of resources
+  }
+
+  async get(key: string): Promise<State | undefined> {
+    // Retrieve state for resource
+  }
+
+  async getBatch(ids: string[]): Promise<Record<string, State>> {
+    // Retrieve multiple states
+  }
+
+  async all(): Promise<Record<string, State>> {
+    // Retrieve all states
+  }
+
+  async set(key: string, value: State): Promise<void> {
+    // Persist state for resource
+  }
+
+  async delete(key: string): Promise<void> {
+    // Remove state for resource
+  }
+}
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new MyStateStore(scope)
+});
+```
+
+<Tip>
+  Custom state stores enable integration with any storage backend: databases, cloud storage, version control, etc.
+</Tip>
+
+## State Operations
+
+### Reading State
+
+Access state within a resource:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    // Current state
+    const state = this.output; // undefined in create phase
+    
+    // Previous props
+    const prevProps = this.props; // undefined in create phase
+    
+    if (this.phase === "update") {
+      console.log("Previous name:", this.output.name);
+      console.log("New name:", props.name);
+    }
+    
+    // ...
+  }
+);
+```
+
+### Custom State Data
+
+Store additional data in state:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    // Store custom data
+    await this.set("deployCount", 
+      (await this.get<number>("deployCount") ?? 0) + 1
+    );
+    
+    // Read custom data
+    const deployCount = await this.get<number>("deployCount");
+    console.log(`Deployed ${deployCount} times`);
+    
+    // Delete custom data
+    await this.delete("lastError");
+    
+    // ...
+  }
+);
+```
+
+<Info>
+  Custom state data persists across deployments and is separate from resource props and output.
+</Info>
+
+### Scope State
+
+Scopes can also store state:
+
+```typescript
+await alchemy.run("api", async (scope) => {
+  // Store at scope level
+  await scope.set("version", "2.0.0");
+  
+  // Read from scope
+  const version = await scope.get<string>("version");
+  
+  // Delete from scope
+  await scope.delete("version");
+});
+```
+
+## State Serialization
+
+Alchemy automatically serializes complex types:
+
+### Secrets
+
+Secrets are encrypted before storage:
+
+```typescript
+const worker = await Worker("api", {
+  bindings: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+// In state file:
+// {
+//   "props": {
+//     "bindings": {
+//       "API_KEY": {
+//         "@secret": "encrypted-base64-value"
+//       }
+//     }
+//   }
+// }
+```
+
+### Resources
+
+Resource references are serialized by FQN:
+
+```typescript
+const database = await D1Database("db", { ... });
+const worker = await Worker("api", {
+  bindings: {
+    DB: database
+  }
+});
+
+// In state file:
+// {
+//   "props": {
+//     "bindings": {
+//       "DB": {
+//         "@resource": "my-app/dev/db"
+//       }
+//     }
+//   }
+// }
+```
+
+### Dates and Special Types
+
+Custom serializers handle complex types:
+
+```typescript
+const resource = await MyResource("item", {
+  createdAt: new Date()
+});
+
+// Date is serialized to ISO string
+// Custom deserializers restore original types on read
+```
+
+## State Locking
+
+Alchemy uses mutexes to prevent concurrent state modifications:
+
+```typescript
+// Automatic locking during state operations
+await scope.set("key", "value");
+// Lock is released after operation
+
+// Manual locking for complex operations
+await scope.dataMutex.lock(async () => {
+  const current = await scope.get<number>("counter");
+  await scope.set("counter", current + 1);
+});
+```
+
+<Note>
+  State locking prevents race conditions when multiple resources access shared state.
+</Note>
+
+## State Migration
+
+When changing state stores:
+
+<Steps>
+  <Step title="Export existing state">
+    Read all state from current store
+  </Step>
+  <Step title="Initialize new store">
+    Configure new state store
+  </Step>
+  <Step title="Import state">
+    Write state to new store
+  </Step>
+  <Step title="Verify">
+    Run deployment with `--read` to verify state
+  </Step>
+  <Step title="Cutover">
+    Update all deployments to use new store
+  </Step>
+</Steps>
+
+```typescript
+// Migration script
+import { FileSystemStateStore } from "alchemy";
+import { S3StateStore } from "alchemy/aws";
+
+const oldStore = new FileSystemStateStore(scope);
+const newStore = new S3StateStore(scope, { ... });
+
+const states = await oldStore.all();
+for (const [key, state] of Object.entries(states)) {
+  await newStore.set(key, state);
+}
+```
+
+## Debugging State
+
+Inspect state files directly:
+
+```bash
+# View all resources in dev stage
+ls .alchemy/my-app/dev/
+
+# View specific resource state
+cat .alchemy/my-app/dev/api.json | jq .
+```
+
+Or programmatically:
+
+```typescript
+await alchemy.run("debug", async (scope) => {
+  const resourceIds = await scope.state.list();
+  console.log("Resources:", resourceIds);
+  
+  for (const id of resourceIds) {
+    const state = await scope.state.get(id);
+    console.log(`${id}:`, state);
+  }
+});
+```
+
+## State Best Practices
+
+<Steps>
+  <Step title="Use persistent storage in production">
+    File system state doesn't work in CI/CD or team environments
+  </Step>
+  <Step title="Never manually edit state">
+    Let Alchemy manage state automatically
+  </Step>
+  <Step title="Back up state regularly">
+    State is critical - losing it means losing track of your infrastructure
+  </Step>
+  <Step title="Use different stores per stage">
+    Isolate dev and prod state completely
+  </Step>
+  <Step title="Monitor state size">
+    Large state files can slow down deployments
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### State Corruption
+
+If state is corrupted:
+
+```bash
+# Force re-creation of resources
+bun ./alchemy.run.ts --force
+```
+
+### Lost State
+
+If state is lost:
+
+```bash
+# Adopt existing resources
+bun ./alchemy.run.ts --adopt
+```
+
+### State Conflicts
+
+If state conflicts with reality:
+
+```bash
+# Read current state without changes
+bun ./alchemy.run.ts --read
+
+# Force update to match code
+bun ./alchemy.run.ts --force
+```
+
+## Advanced Patterns
+
+### State Versioning
+
+Track state versions:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    const version = (await this.get<number>("stateVersion") ?? 0) + 1;
+    await this.set("stateVersion", version);
+    
+    // Perform migrations based on version
+    if (version === 2) {
+      // Migrate from v1 to v2
+    }
+    
+    // ...
+  }
+);
+```
+
+### State Inspection
+
+Expose state for debugging:
+
+```typescript
+await alchemy.run("inspect", async (scope) => {
+  const allState = await scope.state.all();
+  
+  console.log("State summary:");
+  for (const [id, state] of Object.entries(allState)) {
+    console.log(`  ${id}: ${state.kind} (${state.status})`);
+  }
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scopes" icon="folder-tree" href="/concepts/scopes">
+    Understand scope-level state management
+  </Card>
+  <Card title="Resources" icon="cube" href="/concepts/resources">
+    Learn how resources interact with state
+  </Card>
+  <Card title="Secrets" icon="key" href="/concepts/secrets">
+    See how secrets are encrypted in state
+  </Card>
+  <Card title="Lifecycle" icon="rotate" href="/concepts/lifecycle">
+    Understand state transitions during lifecycle
+  </Card>
+</CardGroup>

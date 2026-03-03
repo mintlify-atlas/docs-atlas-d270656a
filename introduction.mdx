@@ -1,0 +1,216 @@
+---
+title: "Introduction to Alchemy"
+description: "TypeScript-native Infrastructure-as-Code that runs anywhere"
+---
+
+<Note>
+  **Alchemy is embeddable Infrastructure-as-Code** — Write infrastructure in pure TypeScript that runs in any JavaScript runtime, including browsers, serverless functions, and durable workflows.
+</Note>
+
+## What is Alchemy?
+
+Alchemy is a modern Infrastructure-as-Code (IaC) library that lets you model cloud resources using pure TypeScript. Unlike traditional IaC tools like Pulumi, Terraform, and CloudFormation, Alchemy is implemented in pure ESM-native TypeScript code with no additional toolchains or processes required.
+
+Resources are simple **memoized async functions** that automatically handle Create, Update, and Delete lifecycles.
+
+```typescript
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+
+// Initialize the app
+const app = await alchemy("my-app");
+
+// Create a Cloudflare Worker
+export const worker = await Worker("api", {
+  name: "my-worker",
+  entrypoint: "./src/index.ts",
+  bindings: {
+    API_KEY: alchemy.secret(process.env.API_KEY),
+  },
+});
+
+console.log(`Deployed to: ${worker.url}`);
+
+// Finalize (triggers deletion of orphaned resources)
+await app.finalize();
+```
+
+## Why Alchemy?
+
+<CardGroup cols={2}>
+  <Card title="JS-Native" icon="js">
+    No second language, toolchains, processes, or services. Just TypeScript.
+  </Card>
+  
+  <Card title="Async-Native" icon="bolt">
+    Resources are async functions — no complex abstraction to learn.
+  </Card>
+  
+  <Card title="ESM-Native" icon="box">
+    Built exclusively on modern ESM with preference for fast runtimes like Bun.
+  </Card>
+  
+  <Card title="Embeddable" icon="globe">
+    Runs in any JavaScript/TypeScript environment, including the browser!
+  </Card>
+  
+  <Card title="Extensible" icon="puzzle-piece">
+    Implement your own resources with a simple function.
+  </Card>
+  
+  <Card title="AI-First" icon="robot">
+    LLM-friendly design — create/fork/modify resources in minutes, not days.
+  </Card>
+  
+  <Card title="No Service" icon="folder">
+    State files stored locally in your project — inspect, modify, or commit to your repo.
+  </Card>
+  
+  <Card title="No Strong Opinions" icon="heart">
+    Structure your codebase however you want. We don't care!
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Type-Safe Infrastructure
+
+Every resource is fully typed with TypeScript. Get autocomplete, type checking, and refactoring support right in your IDE.
+
+```typescript
+import { Worker, R2Bucket, D1Database } from "alchemy/cloudflare";
+
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket",
+});
+
+const db = await D1Database("database", {
+  name: "my-db",
+  migrationsDir: "./migrations",
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    BUCKET: bucket,    // Type-safe binding!
+    DATABASE: db,      // Full autocomplete!
+  },
+});
+```
+
+### Encrypted Secrets
+
+Secrets are automatically encrypted in state files using your password.
+
+```typescript
+const app = await alchemy("my-app", {
+  password: process.env.ALCHEMY_PASSWORD,
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    // Secrets are encrypted in .alchemy/my-app/stage/worker.json
+    GITHUB_CLIENT_ID: alchemy.secret(process.env.GITHUB_CLIENT_ID),
+    GITHUB_CLIENT_SECRET: alchemy.secret(process.env.GITHUB_CLIENT_SECRET),
+  },
+});
+```
+
+### Resource Adoption
+
+Adopt existing infrastructure into your Alchemy app seamlessly.
+
+```typescript
+const app = await alchemy("my-app");
+
+// Adopt existing Cloudflare Worker
+const worker = await Worker("legacy-api", {
+  name: "existing-worker-name",
+  adopt: true,  // Won't fail if already exists
+  entrypoint: "./src/index.ts",
+});
+```
+
+### Local Development
+
+Develop and test infrastructure locally before deploying to production.
+
+```typescript
+// Run with: bun ./alchemy.run.ts --local
+const app = await alchemy("my-app");
+
+// Resources run in Miniflare locally
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  dev: { remote: false },  // Use local simulator
+});
+
+console.log(worker.url);  // http://localhost:8787
+```
+
+## Supported Providers
+
+Alchemy supports multiple cloud providers and services:
+
+<CardGroup cols={3}>
+  <Card title="Cloudflare" icon="cloud" href="/providers/cloudflare">
+    Workers, R2, D1, KV, Durable Objects, and more
+  </Card>
+  
+  <Card title="AWS" icon="aws" href="/providers/aws">
+    Lambda, DynamoDB, S3, IAM, and CloudControl API
+  </Card>
+  
+  <Card title="GitHub" icon="github" href="/providers/github">
+    Repositories, Secrets, Actions
+  </Card>
+  
+  <Card title="Neon" icon="database" href="/providers/neon">
+    Serverless Postgres databases
+  </Card>
+  
+  <Card title="PlanetScale" icon="planet" href="/providers/planetscale">
+    MySQL databases with branching
+  </Card>
+  
+  <Card title="Docker" icon="docker" href="/providers/docker">
+    Containers and images
+  </Card>
+  
+  <Card title="Stripe" icon="credit-card" href="/providers/stripe">
+    Payment infrastructure
+  </Card>
+  
+  <Card title="Sentry" icon="bug" href="/providers/sentry">
+    Error tracking and monitoring
+  </Card>
+  
+  <Card title="Upstash" icon="server" href="/providers/upstash">
+    Serverless Redis and Kafka
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy your first Cloudflare Worker in under 5 minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Install Alchemy and set up your development environment
+  </Card>
+  
+  <Card title="Core Concepts" icon="book" href="/concepts/resources">
+    Learn about Resources, Scopes, and State management
+  </Card>
+  
+  <Card title="Examples" icon="code" href="/examples">
+    Browse complete example projects and patterns
+  </Card>
+</CardGroup>
+
+<Tip>
+  **New to Infrastructure-as-Code?** Alchemy makes it easy to get started. Follow the [Quickstart](/quickstart) to deploy your first resource in minutes.
+</Tip>

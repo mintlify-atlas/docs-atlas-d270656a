@@ -1,0 +1,221 @@
+---
+title: React Router
+description: Deploy React Router applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [React Router](https://reactrouter.com/) applications to Cloudflare Workers with automatic SSR detection and configuration.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy react-router @react-router/cloudflare
+```
+
+## Configuration
+
+<Steps>
+
+### Create Workers Entry Point
+
+Create a `workers/app.ts` file for your Cloudflare Workers entry point:
+
+```ts
+import { createRequestHandler } from "@react-router/cloudflare";
+// @ts-expect-error - virtual module provided by React Router
+import * as build from "virtual:react-router/server-build";
+
+export default {
+  async fetch(request, env, ctx) {
+    const handler = createRequestHandler(build, "production");
+    return handler(request, { env, ctx });
+  },
+};
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { D1Database, KVNamespace, ReactRouter } from "alchemy/cloudflare";
+
+const app = await alchemy("my-react-router-app");
+
+const [db, cache] = await Promise.all([
+  D1Database("database", {
+    name: `${app.name}-${app.stage}-db`,
+  }),
+  KVNamespace("cache", {
+    title: `${app.name}-${app.stage}-cache`,
+  }),
+]);
+
+const website = await ReactRouter("website", {
+  main: "workers/app.ts",
+  bindings: {
+    DB: db,
+    CACHE: cache,
+    API_SECRET: alchemy.secret.env.API_SECRET,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`main`**: Path to workers entry point
+  - Default: `workers/app.ts`
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`build`**: Build command override
+  - Default: `react-router typegen && react-router build`
+- **`dev`**: Dev command override
+  - Default: `react-router typegen && react-router dev`
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `build/server/index.js` (SSR mode)
+- **`assets`**: Static assets directory
+  - Default: `build/client`
+- **`spa`**: Single-page application mode
+  - Auto-detected from `react-router.config.ts`
+
+## SSR vs SPA Mode
+
+The resource automatically detects whether SSR is enabled by checking `react-router.config.ts`:
+
+### Server-Side Rendering (Default)
+
+React Router enables SSR by default:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  ssr: true, // default
+} satisfies Config;
+```
+
+### Client-Side Only
+
+Disable SSR for client-side routing:
+
+```ts
+// react-router.config.ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  ssr: false,
+} satisfies Config;
+```
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your React Router loaders and actions:
+
+### Loaders
+
+```ts
+import type { LoaderFunctionArgs } from "@react-router/cloudflare";
+
+export async function loader({ context }: LoaderFunctionArgs) {
+  const db = context.cloudflare.env.DB;
+  const result = await db.prepare("SELECT * FROM users").all();
+  
+  return { users: result.results };
+}
+```
+
+### Actions
+
+```ts
+import type { ActionFunctionArgs } from "@react-router/cloudflare";
+
+export async function action({ request, context }: ActionFunctionArgs) {
+  const kv = context.cloudflare.env.CACHE;
+  const formData = await request.formData();
+  
+  await kv.put("key", formData.get("value"));
+  
+  return { success: true };
+}
+```
+
+## TypeScript Configuration
+
+Generate type-safe bindings with React Router's type generation:
+
+```bash
+npm run typegen
+```
+
+This creates types in `.react-router/types/` based on your `workers/app.ts`.
+
+## Local Development
+
+The React Router dev server provides:
+
+- Hot module replacement
+- Type generation
+- Cloudflare Workers emulation
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+## Build Configuration
+
+Customize the build process:
+
+```ts
+const website = await ReactRouter("website", {
+  build: "react-router typegen && react-router build --minify",
+  dev: {
+    command: "react-router typegen && react-router dev --port 3000",
+    domain: "localhost:3000",
+  },
+});
+```
+
+## Node.js Compatibility
+
+React Router automatically sets `compatibility: "node"` for Node.js API support:
+
+- Node.js built-in modules
+- npm packages with Node.js dependencies
+- Full React Router feature set
+
+## Deployment Best Practices
+
+- Keep `build/` directory in `.gitignore`
+- Generate types before deploying
+- Use environment variables for secrets
+- Configure bindings in `alchemy.run.ts`
+- Test locally with React Router dev server
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [Worker](/resources/cloudflare/worker) - Cloudflare Workers deployment
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage

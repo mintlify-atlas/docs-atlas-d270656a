@@ -1,0 +1,250 @@
+---
+title: Container
+description: API reference for Cloudflare Container resources
+---
+
+# Container
+
+Deploy and manage container applications on Cloudflare's global network.
+
+## Container Binding
+
+Creates a Container binding for use in Cloudflare Workers.
+
+### Props
+
+<ParamField path="className" type="string" required>
+  The class name for the container binding.
+
+  ```ts
+  const container = await Container("my-container", {
+    className: "MyContainerClass",
+    build: {
+      context: "./docker/container"
+    }
+  });
+  ```
+</ParamField>
+
+<ParamField path="build" type="object">
+  Docker build configuration.
+
+  <Expandable title="properties">
+    <ParamField path="context" type="string" required>
+      Build context directory.
+    </ParamField>
+
+    <ParamField path="dockerfile" type="string" default="Dockerfile">
+      Path to Dockerfile.
+    </ParamField>
+
+    <ParamField path="platform" type="string" default="linux/amd64">
+      Target platform.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="image" type="string">
+  Pre-built image reference (alternative to build).
+</ParamField>
+
+<ParamField path="maxInstances" type="number" default="10">
+  Maximum number of container instances that can be running.
+</ParamField>
+
+<ParamField path="instanceType" type="InstanceType" default="dev">
+  Instance type determining compute resources.
+
+  Options: `lite`, `dev`, `basic`, `standard`, `standard-1`, `standard-2`, `standard-3`, `standard-4`
+</ParamField>
+
+### Output
+
+<ResponseField name="id" type="string">
+  Unique identifier for the container.
+</ResponseField>
+
+<ResponseField name="className" type="string">
+  Class name used to identify the container in Worker bindings.
+</ResponseField>
+
+<ResponseField name="image" type="Image">
+  Docker image configuration for the container.
+</ResponseField>
+
+<ResponseField name="type" type="container">
+  Type identifier for the binding.
+</ResponseField>
+
+### Example
+
+```ts
+const container = await Container("my-container", {
+  className: "MyContainerClass",
+  build: {
+    context: "./docker/container"
+  },
+  maxInstances: 100
+});
+
+const worker = await Worker("my-worker", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    MY_CONTAINER: container
+  }
+});
+```
+
+## ContainerApplication
+
+Deploy a managed container application with automatic scaling.
+
+### Props
+
+<ParamField path="name" type="string">
+  The name of the container application.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="image" type="Image" required>
+  The Docker image to deploy in the container application.
+</ParamField>
+
+<ParamField path="instances" type="number" default="1">
+  The initial number of container instances to deploy.
+</ParamField>
+
+<ParamField path="maxInstances" type="number" default="1">
+  The maximum number of instances to be used for the deployment.
+</ParamField>
+
+<ParamField path="instanceType" type="InstanceType" default="dev">
+  The instance type to be used for the deployment.
+
+  | Instance Type | vCPU | Memory (Min) | Memory (Max) |
+  |---------------|------|--------------|-------------|
+  | lite          | 1/16 | 256 MiB      | 2 GB        |
+  | basic         | 1/4  | 1 GiB        | 4 GB        |
+  | standard-1    | 1/2  | 4 GiB        | 8 GB        |
+  | standard-2    | 1    | 6 GiB        | 12 GB       |
+  | standard-3    | 2    | 8 GiB        | 16 GB       |
+  | standard-4    | 4    | 12 GiB       | 20 GB       |
+</ParamField>
+
+<ParamField path="schedulingPolicy" type="SchedulingPolicy" default="default">
+  Scheduling policy that controls container placement.
+
+  Options: `moon`, `gpu`, `regional`, `fill_metals`, `default`
+</ParamField>
+
+<ParamField path="rollout" type="ContainerApplicationRollout">
+  Configuration for progressive rollout when updating.
+
+  <Expandable title="properties">
+    <ParamField path="strategy" type="rolling | immediate" default="rolling">
+      The rollout strategy to use.
+    </ParamField>
+
+    <ParamField path="stepPercentage" type="number" default="25">
+      Percentage of instances to update in each step (1-100).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing container application with the same name.
+</ParamField>
+
+### Output
+
+<ResponseField name="id" type="string">
+  Unique identifier for the container application.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Human-readable name of the container application.
+</ResponseField>
+
+### Examples
+
+#### Simple Web Application
+
+```ts
+const webApp = await ContainerApplication("my-web-app", {
+  name: "my-web-app",
+  image: await Image("web-app", {
+    name: "web-app",
+    build: {
+      context: "./docker/web-app"
+    }
+  }),
+  instances: 1,
+  maxInstances: 3
+});
+```
+
+#### GPU-Enabled AI Application
+
+```ts
+const aiApp = await ContainerApplication("ai-inference", {
+  name: "ai-inference",
+  image: await Image("ai-model", {
+    name: "ai-model",
+    build: {
+      context: "./docker/ai"
+    }
+  }),
+  schedulingPolicy: "gpu",
+  instances: 2,
+  maxInstances: 5
+});
+```
+
+#### Container with Durable Objects
+
+```ts
+const doNamespace = DurableObjectNamespace("my-do", {
+  className: "MyDO"
+});
+
+const worker = await Worker("do-worker", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    DO: doNamespace
+  }
+});
+
+const containerApp = await ContainerApplication("stateful-app", {
+  name: "stateful-app",
+  image: await Image("do-app", {
+    name: "do-app",
+    build: {
+      context: "./container"
+    }
+  }),
+  durableObjects: {
+    namespaceId: doNamespace.namespaceId
+  },
+  instances: 1,
+  maxInstances: 10
+});
+```
+
+#### Progressive Rollout
+
+```ts
+const app = await ContainerApplication("my-app", {
+  image: await Image("app", {
+    build: { context: "./docker" }
+  }),
+  instances: 10,
+  maxInstances: 20,
+  rollout: {
+    strategy: "rolling",
+    stepPercentage: 10  // Update 10% at a time
+  }
+});
+```

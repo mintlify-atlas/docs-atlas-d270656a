@@ -1,0 +1,230 @@
+---
+title: Stripe
+description: API reference for Stripe resources
+---
+
+# Stripe
+
+Manage Stripe customers, products, prices, subscriptions, and more.
+
+## Resources
+
+### Customer
+
+Create and manage Stripe customers.
+
+<CodeGroup>
+```typescript Basic Customer
+import { Customer } from "alchemy/stripe";
+
+const customer = await Customer("basic-customer", {
+  email: "john@example.com",
+  name: "John Doe",
+  description: "Premium customer",
+  metadata: {
+    tier: "premium",
+    source: "website"
+  }
+});
+```
+
+```typescript Customer with Address
+import { Customer } from "alchemy/stripe";
+
+const customer = await Customer("customer-with-address", {
+  email: "jane@example.com",
+  name: "Jane Smith",
+  phone: "+1-555-123-4567",
+  address: {
+    line1: "123 Main St",
+    line2: "Apt 4B",
+    city: "San Francisco",
+    state: "CA",
+    postalCode: "94105",
+    country: "US"
+  },
+  shipping: {
+    name: "Jane Smith",
+    address: {
+      line1: "456 Oak Ave",
+      city: "Oakland",
+      state: "CA",
+      postalCode: "94612",
+      country: "US"
+    }
+  }
+});
+```
+
+```typescript Business Customer
+import { Customer } from "alchemy/stripe";
+
+const customer = await Customer("business-customer", {
+  email: "billing@acmecorp.com",
+  name: "Acme Corporation",
+  description: "Enterprise customer",
+  taxExempt: "exempt",
+  invoicePrefix: "ACME",
+  preferredLocales: ["en"],
+  metadata: {
+    type: "business",
+    industry: "technology",
+    employees: "500+"
+  }
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="email" type="string">
+  Customer's email address
+</ParamField>
+
+<ParamField path="name" type="string">
+  The customer's full name or business name
+</ParamField>
+
+<ParamField path="description" type="string">
+  An arbitrary string attached to the object
+</ParamField>
+
+<ParamField path="phone" type="string">
+  The customer's phone number
+</ParamField>
+
+<ParamField path="address" type="object">
+  The customer's address
+  <Expandable>
+    <ParamField path="line1" type="string">
+      Address line 1 (e.g., street, PO Box, or company name)
+    </ParamField>
+    <ParamField path="line2" type="string">
+      Address line 2 (e.g., apartment, suite, unit, or building)
+    </ParamField>
+    <ParamField path="city" type="string">
+      City, district, suburb, town, or village
+    </ParamField>
+    <ParamField path="state" type="string">
+      State, county, province, or region
+    </ParamField>
+    <ParamField path="postalCode" type="string">
+      ZIP or postal code
+    </ParamField>
+    <ParamField path="country" type="string">
+      Two-letter country code (ISO 3166-1 alpha-2)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="shipping" type="object">
+  The customer's shipping information
+  <Expandable>
+    <ParamField path="name" type="string">
+      Customer name
+    </ParamField>
+    <ParamField path="phone" type="string">
+      Customer phone number
+    </ParamField>
+    <ParamField path="address" type="object">
+      Customer's shipping address (same structure as address)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="metadata" type="Record<string, string>">
+  Set of key-value pairs that you can attach to an object
+</ParamField>
+
+<ParamField path="balance" type="number">
+  An integer amount in cents that represents the customer's current balance
+</ParamField>
+
+<ParamField path="invoicePrefix" type="string">
+  The prefix for the customer used to generate unique invoice numbers
+</ParamField>
+
+<ParamField path="preferredLocales" type="string[]">
+  Customer's preferred languages, ordered by preference
+</ParamField>
+
+<ParamField path="taxExempt" type="'exempt' | 'none' | 'reverse'">
+  The customer's tax exemption status
+</ParamField>
+
+<ParamField path="invoiceSettings" type="object">
+  Default invoice settings for this customer
+  <Expandable>
+    <ParamField path="customFields" type="array">
+      Default custom fields to be displayed on invoices
+    </ParamField>
+    <ParamField path="defaultPaymentMethod" type="string">
+      ID of a payment method that's attached to the customer
+    </ParamField>
+    <ParamField path="footer" type="string">
+      Default footer to be displayed on invoices
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="paymentMethod" type="string">
+  The ID of the PaymentMethod to attach to the customer
+</ParamField>
+
+<ParamField path="apiKey" type="Secret">
+  API key to use (overrides environment variable)
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  If true, adopt existing resource if creation fails due to conflict
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The ID of the customer
+</ResponseField>
+
+<ResponseField name="object" type="'customer'">
+  String representing the object's type
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  Customer's email address
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The customer's full name or business name
+</ResponseField>
+
+<ResponseField name="created" type="number">
+  Time at which the object was created
+</ResponseField>
+
+<ResponseField name="livemode" type="boolean">
+  Has the value true if the object exists in live mode or the value false if the object exists in test mode
+</ResponseField>
+
+<ResponseField name="currency" type="string">
+  Three-letter ISO code for the currency the customer can be charged in for recurring billing purposes
+</ResponseField>
+
+<ResponseField name="defaultSource" type="string">
+  ID of the default payment source for the customer
+</ResponseField>
+
+<ResponseField name="delinquent" type="boolean">
+  Whether or not the customer is currently delinquent
+</ResponseField>
+
+<ResponseField name="address" type="object">
+  The customer's address
+</ResponseField>
+
+<ResponseField name="shipping" type="object">
+  The customer's shipping information
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Set of key-value pairs attached to the object
+</ResponseField>

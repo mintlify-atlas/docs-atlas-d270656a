@@ -1,0 +1,332 @@
+---
+title: Creating Resources
+description: Learn how to create and manage infrastructure resources with Alchemy
+---
+
+# Creating Resources
+
+Alchemy uses a **pseudo-class pattern** for defining infrastructure resources. Each resource is created using the `Resource()` function, which manages the complete lifecycle (create, update, delete) of your infrastructure.
+
+## Basic Resource Creation
+
+Resources are created by calling a resource constructor function with an ID and props:
+
+```typescript
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+await app.finalize();
+```
+
+<Steps>
+
+### Initialize an Alchemy Application
+
+Every Alchemy script starts by creating an application scope:
+
+```typescript
+const app = await alchemy("my-app");
+```
+
+This creates a scope that:
+- Manages resource state in `.alchemy/`
+- Automatically parses CLI arguments (`--destroy`, `--stage`, etc.)
+- Tracks all resources created within the scope
+
+### Create Resources
+
+Resources are created using provider-specific constructors. Each resource requires:
+- **ID**: A unique identifier within your scope (e.g., `"api"`, `"database"`)
+- **Props**: Configuration properties specific to the resource type
+
+```typescript
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket"
+});
+
+const database = await D1Database("db", {
+  name: "my-database"
+});
+```
+
+### Finalize the Scope
+
+Always call `finalize()` to complete the deployment:
+
+```typescript
+await app.finalize();
+```
+
+This triggers:
+- Resource creation/updates
+- Cleanup of orphaned resources
+- State persistence
+
+</Steps>
+
+## Resource IDs and Physical Names
+
+Every resource has two important identifiers:
+
+### Resource ID
+
+The **ID** is the logical identifier used in your Alchemy code:
+
+```typescript
+const worker = await Worker("api", { /* ... */ });
+//                            ^^^^^ Resource ID
+```
+
+- Must be unique within a scope
+- Used to reference the resource in state
+- Cannot contain colons (`:`)
+
+### Physical Name
+
+The **physical name** is the actual name in the cloud provider. By default, Alchemy generates this as:
+
+```
+{app}-{stage}-{id}
+```
+
+<CodeGroup>
+
+```typescript Default Physical Name
+const app = await alchemy("my-app");
+// stage defaults to your username or $USER
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+// Physical name: "my-app-john-api"
+```
+
+```typescript Custom Physical Name
+const worker = await Worker("api", {
+  name: "production-api-worker",
+  entrypoint: "./src/index.ts"
+});
+// Physical name: "production-api-worker"
+```
+
+</CodeGroup>
+
+<Tip>
+Use custom names when you need to reference existing resources or follow specific naming conventions.
+</Tip>
+
+## Resource Lifecycle
+
+Alchemy automatically manages the complete lifecycle of your resources:
+
+### Create Phase
+
+When you run your `alchemy.run.ts` script, new resources are created:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+// Output: Create Worker "my-app-john-api"
+```
+
+### Update Phase
+
+If you change resource properties and re-run, Alchemy updates the resource:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    DATABASE: database  // Added binding
+  }
+});
+// Output: Update Worker "my-app-john-api"
+```
+
+### Delete Phase
+
+Run with `--destroy` to delete all resources:
+
+```bash
+bun ./alchemy.run.ts --destroy
+```
+
+<Note>
+Alchemy tracks which resources exist in your code. If you remove a resource from your script, it will be automatically deleted on the next run (orphan cleanup).
+</Note>
+
+## Resource References
+
+You can pass resources as properties to other resources:
+
+```typescript
+const database = await D1Database("db", {
+  name: "my-database"
+});
+
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    DB: database,      // Pass D1Database resource
+    BUCKET: bucket     // Pass R2Bucket resource
+  }
+});
+```
+
+Alchemy automatically:
+- Resolves resource dependencies
+- Creates resources in the correct order
+- Extracts the necessary properties for bindings
+
+## Concurrent Resource Creation
+
+Resources can be created concurrently when they don't depend on each other:
+
+```typescript
+const [worker, bucket, database] = await Promise.all([
+  Worker("api", { entrypoint: "./src/worker.ts" }),
+  R2Bucket("storage", { name: "my-bucket" }),
+  D1Database("db", { name: "my-db" })
+]);
+```
+
+<Tip>
+Use `Promise.all()` to create independent resources faster. Keep batches under 50 resources for optimal performance.
+</Tip>
+
+## Adopting Existing Resources
+
+If a resource already exists with the same name, you can adopt it:
+
+```typescript
+const app = await alchemy("my-app", {
+  adopt: true  // Enable adoption globally
+});
+
+const worker = await Worker("api", {
+  name: "existing-worker",
+  entrypoint: "./src/index.ts"
+});
+// If "existing-worker" exists, it will be adopted and updated
+```
+
+Or per-resource:
+
+```typescript
+const worker = await Worker("api", {
+  name: "existing-worker",
+  entrypoint: "./src/index.ts",
+  adopt: true  // Enable adoption for this resource only
+});
+```
+
+<Warning>
+Adoption will update the existing resource to match your configuration. Make sure this is intentional before enabling.
+</Warning>
+
+## Resource Outputs
+
+Every resource returns output properties you can use:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+
+console.log(worker.url);  // https://my-app-john-api.account.workers.dev
+console.log(worker.id);   // "api"
+console.log(worker.name); // "my-app-john-api"
+```
+
+These outputs can be used to:
+- Display deployment information
+- Configure other resources
+- Pass to external systems
+
+## Error Handling
+
+Alchemy provides clear error messages for common issues:
+
+```typescript
+try {
+  const worker = await Worker("api", {
+    entrypoint: "./src/index.ts"
+  });
+} catch (error) {
+  console.error("Failed to create worker:", error.message);
+}
+```
+
+Common errors:
+- **Duplicate resource ID**: Using the same ID twice in a scope
+- **Invalid resource ID**: IDs containing colons or invalid characters
+- **Resource conflicts**: Resource already exists without `adopt: true`
+- **Missing credentials**: Provider credentials not configured
+
+## Best Practices
+
+<Steps>
+
+### Use Descriptive IDs
+
+```typescript
+// Good
+const apiWorker = await Worker("api", { /* ... */ });
+const userDb = await D1Database("user-db", { /* ... */ });
+
+// Avoid
+const w1 = await Worker("w1", { /* ... */ });
+const db = await D1Database("db", { /* ... */ });
+```
+
+### Group Related Resources
+
+```typescript
+// API Infrastructure
+const apiDb = await D1Database("api-db", { /* ... */ });
+const apiWorker = await Worker("api", {
+  bindings: { DB: apiDb }
+});
+
+// Frontend Infrastructure
+const assets = await R2Bucket("assets", { /* ... */ });
+const frontend = await Vite("frontend", {
+  bindings: { ASSETS: assets }
+});
+```
+
+### Always Call finalize()
+
+Ensure cleanup and orphan removal:
+
+```typescript
+const app = await alchemy("my-app");
+
+try {
+  // Create resources...
+} finally {
+  await app.finalize();
+}
+```
+
+</Steps>
+
+## Next Steps
+
+- [Managing Secrets](/guides/managing-secrets) - Securely store API keys and credentials
+- [Local Development](/guides/local-development) - Test resources locally before deployment
+- [Testing](/guides/testing) - Write tests for your infrastructure

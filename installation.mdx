@@ -1,0 +1,449 @@
+---
+title: "Installation"
+description: "Install Alchemy and set up your development environment"
+---
+
+## Requirements
+
+Alchemy requires one of the following JavaScript runtimes:
+
+- **[Node.js](https://nodejs.org/)** 18.0.0 or higher
+- **[Bun](https://bun.sh/)** 1.0.0 or higher (recommended for best performance)
+
+<Tip>
+  We recommend **Bun** for the best developer experience. It's significantly faster than Node.js and has built-in TypeScript support.
+</Tip>
+
+## Package Installation
+
+Install Alchemy using your preferred package manager:
+
+<CodeGroup>
+  ```bash npm
+  npm install alchemy
+  ```
+
+  ```bash yarn
+  yarn add alchemy
+  ```
+
+  ```bash pnpm
+  pnpm add alchemy
+  ```
+
+  ```bash bun
+  bun add alchemy
+  ```
+</CodeGroup>
+
+## TypeScript Configuration
+
+Alchemy is built with TypeScript and works best with a properly configured `tsconfig.json`.
+
+### Recommended TypeScript Config
+
+Create or update your `tsconfig.json`:
+
+```json tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022"],
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src/**/*", "alchemy.run.ts"],
+  "exclude": ["node_modules", ".alchemy"]
+}
+```
+
+<Note>
+  The `"types": ["@cloudflare/workers-types"]` is only needed if you're using Cloudflare Workers. Remove it if you're using other providers.
+</Note>
+
+## Provider-Specific Setup
+
+Depending on which cloud providers you plan to use, you may need additional dependencies.
+
+### Cloudflare
+
+For Cloudflare Workers, R2, D1, KV, and other services:
+
+<CodeGroup>
+  ```bash npm
+  npm install @cloudflare/workers-types wrangler
+  ```
+
+  ```bash yarn
+  yarn add @cloudflare/workers-types wrangler
+  ```
+
+  ```bash pnpm
+  pnpm add @cloudflare/workers-types wrangler
+  ```
+
+  ```bash bun
+  bun add @cloudflare/workers-types wrangler
+  ```
+</CodeGroup>
+
+**Environment Variables:**
+
+```bash .env
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_TOKEN=your-api-token
+ALCHEMY_PASSWORD=your-encryption-password
+```
+
+<Accordion title="How to get Cloudflare credentials">
+  1. **Account ID**: Log into [Cloudflare dashboard](https://dash.cloudflare.com/), find it on the right sidebar
+  2. **API Token**: Create at [API Tokens page](https://dash.cloudflare.com/profile/api-tokens)
+     - Use "Edit Cloudflare Workers" template
+     - Grant **Account > Workers Scripts > Edit**
+     - Grant **Account > Account Settings > Read**
+  3. **Password**: Choose a strong password for encrypting secrets
+</Accordion>
+
+### AWS
+
+For AWS Lambda, DynamoDB, S3, and other services:
+
+<CodeGroup>
+  ```bash npm
+  npm install @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3 @aws-sdk/client-iam
+  ```
+
+  ```bash yarn
+  yarn add @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3 @aws-sdk/client-iam
+  ```
+
+  ```bash pnpm
+  pnpm add @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3 @aws-sdk/client-iam
+  ```
+
+  ```bash bun
+  bun add @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3 @aws-sdk/client-iam
+  ```
+</CodeGroup>
+
+**Environment Variables:**
+
+```bash .env
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+ALCHEMY_PASSWORD=your-encryption-password
+```
+
+### GitHub
+
+For managing GitHub repositories, secrets, and actions:
+
+<CodeGroup>
+  ```bash npm
+  npm install @octokit/rest
+  ```
+
+  ```bash yarn
+  yarn add @octokit/rest
+  ```
+
+  ```bash pnpm
+  pnpm add @octokit/rest
+  ```
+
+  ```bash bun
+  bun add @octokit/rest
+  ```
+</CodeGroup>
+
+**Environment Variables:**
+
+```bash .env
+GITHUB_TOKEN=ghp_your_personal_access_token
+ALCHEMY_PASSWORD=your-encryption-password
+```
+
+### Database Providers
+
+<Tabs>
+  <Tab title="Neon">
+    ```bash
+    npm install @neondatabase/serverless
+    ```
+
+    ```bash .env
+    NEON_API_KEY=your-api-key
+    ```
+  </Tab>
+
+  <Tab title="PlanetScale">
+    ```bash
+    npm install @planetscale/database
+    ```
+
+    ```bash .env
+    PLANETSCALE_TOKEN=your-token
+    PLANETSCALE_ORG=your-org
+    ```
+  </Tab>
+
+  <Tab title="Prisma Postgres">
+    ```bash
+    npm install @prisma/client
+    ```
+
+    ```bash .env
+    PRISMA_API_KEY=your-api-key
+    ```
+  </Tab>
+</Tabs>
+
+## Project Structure
+
+Here's a recommended project structure for an Alchemy project:
+
+```
+my-project/
+├── .alchemy/              # State directory (gitignored)
+│   └── my-app/
+│       └── stage-name/
+│           └── *.json     # Encrypted state files
+├── src/
+│   ├── index.ts          # Your application code
+│   └── worker.ts
+├── migrations/           # Database migrations (if using D1)
+│   └── 0001_initial.sql
+├── .env                  # Environment variables (gitignored)
+├── .gitignore
+├── alchemy.run.ts        # Infrastructure definition
+├── package.json
+└── tsconfig.json
+```
+
+### .gitignore Configuration
+
+Make sure to ignore sensitive files:
+
+```gitignore .gitignore
+# Dependencies
+node_modules/
+
+# Alchemy state (contains encrypted secrets)
+.alchemy/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+.output/
+
+# IDE
+.vscode/
+.idea/
+```
+
+<Warning>
+  **Never commit `.alchemy/` or `.env` files to version control.** They contain encrypted secrets and sensitive state.
+</Warning>
+
+## Verify Installation
+
+Create a simple test file to verify everything is working:
+
+```typescript test-alchemy.ts
+import alchemy from "alchemy";
+
+const app = await alchemy("test-app");
+
+console.log("✅ Alchemy is installed correctly!");
+console.log(`App: ${app.name}`);
+console.log(`Stage: ${app.stage}`);
+
+await app.finalize();
+```
+
+Run it:
+
+<CodeGroup>
+  ```bash bun
+  bun test-alchemy.ts
+  ```
+
+  ```bash node
+  npx tsx test-alchemy.ts
+  ```
+</CodeGroup>
+
+You should see:
+
+```
+✅ Alchemy is installed correctly!
+App: test-app
+Stage: your-username
+```
+
+## CLI Commands
+
+Alchemy scripts support several CLI flags for different operations:
+
+### Deployment Commands
+
+<CodeGroup>
+  ```bash Deploy (default)
+  bun ./alchemy.run.ts
+  ```
+
+  ```bash Local Development
+  bun ./alchemy.run.ts --local
+  ```
+
+  ```bash Watch Mode
+  bun --watch ./alchemy.run.ts
+  ```
+
+  ```bash Destroy Resources
+  bun ./alchemy.run.ts --destroy
+  ```
+
+  ```bash Custom Stage
+  bun ./alchemy.run.ts --stage production
+  ```
+
+  ```bash Adopt Existing Resources
+  bun ./alchemy.run.ts --adopt
+  ```
+
+  ```bash Force Update
+  bun ./alchemy.run.ts --force
+  ```
+
+  ```bash Quiet Mode
+  bun ./alchemy.run.ts --quiet
+  ```
+</CodeGroup>
+
+### Common Flag Combinations
+
+```bash
+# Local development with auto-reload
+bun --watch ./alchemy.run.ts --local
+
+# Deploy to production stage
+bun ./alchemy.run.ts --stage prod
+
+# Destroy production resources
+bun ./alchemy.run.ts --stage prod --destroy
+
+# Adopt existing infrastructure
+bun ./alchemy.run.ts --adopt --force
+```
+
+## IDE Setup
+
+### VS Code
+
+Install recommended extensions:
+
+1. **TypeScript and JavaScript Language Features** (built-in)
+2. **ESLint** - For linting
+3. **Prettier** - For code formatting
+
+Add to `.vscode/settings.json`:
+
+```json .vscode/settings.json
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
+```
+
+### IntelliJ / WebStorm
+
+1. Enable TypeScript support: **Settings → Languages & Frameworks → TypeScript**
+2. Set TypeScript version to project version
+3. Enable **ESLint** and **Prettier** in settings
+
+## Troubleshooting
+
+### Module Resolution Errors
+
+If you see "Cannot find module 'alchemy'":
+
+1. Make sure `alchemy` is in your `package.json` dependencies
+2. Run `npm install` or `bun install`
+3. Check that `"moduleResolution": "bundler"` is in your `tsconfig.json`
+
+### Type Errors with Workers Types
+
+If you see type errors with Cloudflare Workers:
+
+1. Install types: `npm install -D @cloudflare/workers-types`
+2. Add to `tsconfig.json`:
+   ```json
+   {
+     "compilerOptions": {
+       "types": ["@cloudflare/workers-types"]
+     }
+   }
+   ```
+
+### Permission Errors
+
+If deployment fails with permission errors:
+
+1. Verify your API credentials in `.env`
+2. Check that your API token has the required permissions
+3. For Cloudflare: Ensure you have **Workers Scripts > Edit** permission
+
+### State File Corruption
+
+If state files are corrupted:
+
+1. Back up `.alchemy/` directory
+2. Delete corrupted state files
+3. Run with `--adopt` to re-adopt existing resources
+
+```bash
+bun ./alchemy.run.ts --adopt --force
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy your first Cloudflare Worker in 5 minutes
+  </Card>
+
+  <Card title="Core Concepts" icon="book" href="/concepts/resources">
+    Learn about Resources, Scopes, and State
+  </Card>
+
+  <Card title="Providers" icon="cloud" href="/providers">
+    Explore all available cloud providers
+  </Card>
+
+  <Card title="Examples" icon="code" href="/examples">
+    Browse complete example projects
+  </Card>
+</CardGroup>
+
+<Note>
+  **Need help?** Join our [Discord community](https://alchemy.run/discord) or open an issue on [GitHub](https://github.com/alchemy-run/alchemy).
+</Note>

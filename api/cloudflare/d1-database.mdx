@@ -1,0 +1,160 @@
+---
+title: D1Database
+description: API reference for Cloudflare D1 Database resource
+---
+
+# D1Database
+
+Creates and manages Cloudflare D1 Databases - serverless SQL databases built on SQLite.
+
+## Props
+
+<ParamField path="name" type="string">
+  Name of the database.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="primaryLocationHint" type="string">
+  Optional primary location hint for the database.
+
+  Options: `wnam`, `enam`, `weur`, `eeur`, `apac`, `oc`
+</ParamField>
+
+<ParamField path="readReplication" type="object">
+  Read replication configuration (only mutable property during updates).
+
+  <Expandable title="properties">
+    <ParamField path="mode" type="auto | disabled" required>
+      Read replication mode.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the database when the resource is removed from Alchemy.
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing database with the same name if it exists.
+</ParamField>
+
+<ParamField path="clone" type="D1Database | { id: string } | { name: string }">
+  Clone data from an existing database to this new database (only applicable during creation phase).
+
+  ```ts
+  const clonedDb = await D1Database("cloned-db", {
+    clone: otherDb
+  });
+  ```
+</ParamField>
+
+<ParamField path="importFiles" type="string[]">
+  The names of SQL files to import. After migrations are applied, these files will be run.
+</ParamField>
+
+<ParamField path="migrationsTable" type="string" default="d1_migrations">
+  Name of the table used to track migrations. Only used if migrationsDir is specified.
+</ParamField>
+
+<ParamField path="migrationsDir" type="string">
+  Directory containing migration SQL files. If not set, no migrations will be applied.
+
+  ```ts
+  const db = await D1Database("mydb", {
+    migrationsDir: "./migrations"
+  });
+  ```
+</ParamField>
+
+<ParamField path="jurisdiction" type="default | eu | fedramp">
+  Optional jurisdiction for the database.
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The unique ID of the database (UUID).
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the database.
+</ResponseField>
+
+<ResponseField name="jurisdiction" type="D1DatabaseJurisdiction">
+  The jurisdiction of the database.
+</ResponseField>
+
+<ResponseField name="type" type="d1">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic D1 Database
+
+```ts
+const db = await D1Database("my-app-db", {
+  name: "my-app-db"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    DB: db
+  }
+});
+```
+
+### Database with Location Hint
+
+```ts
+const westUsDb = await D1Database("west-us-db", {
+  name: "west-us-db",
+  primaryLocationHint: "wnam"
+});
+```
+
+### Adopt Existing Database
+
+```ts
+const existingDb = await D1Database("existing-db", {
+  name: "existing-db",
+  adopt: true,
+  readReplication: {
+    mode: "auto"
+  }
+});
+```
+
+### Database with Migrations
+
+```ts
+const db = await D1Database("mydb", {
+  name: "mydb",
+  migrationsDir: "./migrations"
+});
+```
+
+### Database with Custom Migration Table (Drizzle Compatible)
+
+```ts
+const db = await D1Database("mydb", {
+  name: "mydb",
+  migrationsDir: "./migrations",
+  migrationsTable: "drizzle_migrations"
+});
+```
+
+### Clone Existing Database
+
+```ts
+const sourceDb = await D1Database("source-db");
+
+const clonedDb = await D1Database("cloned-db", {
+  name: "cloned-db",
+  clone: sourceDb
+});
+```

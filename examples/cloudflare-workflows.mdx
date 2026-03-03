@@ -1,0 +1,183 @@
+---
+title: Cloudflare Workflows
+description: Implement stateful workflows with Cloudflare Workflows
+---
+
+# Cloudflare Workflows Example
+
+This example demonstrates using Cloudflare Workflows for stateful, long-running processes. The workflow example is included in the comprehensive Cloudflare Worker example.
+
+## Features
+
+- **Workflows**: Stateful workflow orchestration
+- **OFAC Processing**: Example compliance workflow
+- **Worker Integration**: Workflows bound to Workers
+- **Durable Execution**: Guaranteed workflow completion
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+```
+
+### Create alchemy.run.ts
+
+Define a workflow in your worker configuration:
+
+```ts
+import alchemy from "alchemy";
+import { Worker, Workflow } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-worker");
+
+export const worker = await Worker("worker", {
+  name: `${app.name}-${app.stage}-worker`,
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    WORKFLOW: Workflow("OFACWorkflow", {
+      className: "OFACWorkflow",
+      workflowName: "ofac-workflow",
+    }),
+  },
+  url: true,
+});
+
+await app.finalize();
+```
+
+### Create Workflow Class
+
+Create `src/workflow.ts`:
+
+```ts
+import { WorkflowEntrypoint, WorkflowStep } from "cloudflare:workers";
+
+export class OFACWorkflow extends WorkflowEntrypoint {
+  async run(event: unknown, step: WorkflowStep) {
+    // Step 1: Validate input
+    const validated = await step.do("validate", async () => {
+      console.log("Validating OFAC data...");
+      return { valid: true };
+    });
+
+    if (!validated.valid) {
+      return { status: "failed", reason: "validation" };
+    }
+
+    // Step 2: Check OFAC database
+    const result = await step.do("check-ofac", async () => {
+      console.log("Checking OFAC database...");
+      // Simulate OFAC check
+      await step.sleep("wait-for-response", 1000);
+      return { match: false };
+    });
+
+    // Step 3: Process result
+    const processed = await step.do("process", async () => {
+      if (result.match) {
+        return { status: "blocked", reason: "OFAC match" };
+      }
+      return { status: "approved" };
+    });
+
+    return processed;
+  }
+}
+```
+
+### Use Workflow in Worker
+
+Trigger workflows from your worker:
+
+```ts
+import { env } from "cloudflare:workers";
+
+export default {
+  async fetch(request: Request) {
+    // Start a new workflow instance
+    const instance = await env.WORKFLOW.create({
+      id: crypto.randomUUID(),
+    });
+
+    // Get workflow status
+    const status = await instance.status();
+
+    return new Response(
+      JSON.stringify({
+        instanceId: instance.id,
+        status: status,
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  },
+};
+```
+
+### Deploy
+
+Deploy your workflow:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Workflow Definition
+
+Workflows are defined with a class name and workflow name:
+
+```ts
+Workflow("OFACWorkflow", {
+  className: "OFACWorkflow",
+  workflowName: "ofac-workflow",
+})
+```
+
+### Workflow Steps
+
+Steps provide durability guarantees:
+
+```ts
+const result = await step.do("step-name", async () => {
+  // This code runs exactly once
+  return { data: "result" };
+});
+```
+
+### Sleep/Delays
+
+Workflows can pause execution:
+
+```ts
+await step.sleep("wait-for-response", 1000);
+```
+
+### Instance Management
+
+Create and manage workflow instances:
+
+```ts
+const instance = await env.WORKFLOW.create({ id: "unique-id" });
+const status = await instance.status();
+```
+
+## Use Cases
+
+- Compliance workflows (OFAC, KYC)
+- Multi-step approval processes
+- Long-running data processing
+- Saga pattern implementations
+- Retry-able operations with state
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-worker](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-worker)

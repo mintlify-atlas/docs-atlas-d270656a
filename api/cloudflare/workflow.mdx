@@ -1,0 +1,98 @@
+---
+title: Workflow
+description: API reference for Cloudflare Workflow binding
+---
+
+# Workflow
+
+Creates a workflow binding for orchestrating and automating tasks in Cloudflare Workers.
+
+## Props
+
+<ParamField path="workflowName" type="string">
+  Name of the workflow.
+
+  <Expandable title="default" defaultOpen>
+    `className` if provided, otherwise `id`
+  </Expandable>
+
+  <Expandable title="constraints">
+    - Max length: 64
+    - Min length: 1
+  </Expandable>
+</ParamField>
+
+<ParamField path="className" type="string">
+  Name of the class that implements the workflow.
+
+  <Expandable title="default" defaultOpen>
+    `workflowName` if provided, otherwise `id`
+  </Expandable>
+
+  <Expandable title="constraints">
+    - Max length: 255
+    - Min length: 1
+  </Expandable>
+</ParamField>
+
+<ParamField path="scriptName" type="string">
+  Name of the script containing the workflow implementation.
+
+  <Expandable title="default" defaultOpen>
+    Bound worker script
+  </Expandable>
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  Unique identifier for the workflow.
+</ResponseField>
+
+<ResponseField name="workflowName" type="string">
+  Name of the workflow.
+</ResponseField>
+
+<ResponseField name="className" type="string">
+  Class name used to identify the workflow.
+</ResponseField>
+
+<ResponseField name="scriptName" type="string">
+  Name of the script containing the workflow implementation.
+</ResponseField>
+
+<ResponseField name="type" type="workflow">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic Workflow
+
+```ts
+const workflow = Workflow("my-workflow", {
+  workflowName: "my-workflow",
+  className: "MyWorkflow"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    WORKFLOW: workflow
+  }
+});
+```
+
+### OFAC Compliance Workflow
+
+```ts
+const worker = await Worker("compliance", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    OFAC_WORKFLOW: Workflow("OFACWorkflow", {
+      className: "OFACWorkflow",
+      workflowName: "ofac-workflow"
+    })
+  }
+});
+```

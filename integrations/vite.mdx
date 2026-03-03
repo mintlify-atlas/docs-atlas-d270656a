@@ -1,0 +1,125 @@
+---
+title: Vite
+description: Deploy Vite applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [Vite](https://vitejs.dev/) applications to Cloudflare Workers with automatic configuration and local development support.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy vite @vitejs/plugin-react
+```
+
+## Configuration
+
+<Steps>
+
+### Configure Vite Plugin
+
+Add the Alchemy plugin to your `vite.config.ts`:
+
+```ts
+import react from "@vitejs/plugin-react";
+import alchemy from "alchemy/cloudflare/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [alchemy(), react()],
+});
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file to configure your deployment:
+
+```ts
+import alchemy from "alchemy";
+import { KVNamespace, Vite, Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("my-vite-app");
+
+const kv = await KVNamespace("kv", {
+  title: `${app.name}-${app.stage}-kv`,
+});
+
+const website = await Vite("website", {
+  entrypoint: "src/index.ts",
+  bindings: {
+    KV: kv,
+    API_KEY: alchemy.secret.env.API_KEY,
+    VITE_PUBLIC_DOMAIN: Worker.DevDomain,
+  },
+  dev: {
+    command: "vite dev --port 5173",
+    domain: "localhost:5173",
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+The `Vite` resource extends [`Website`](/resources/cloudflare/website) and accepts all its properties:
+
+### Properties
+
+- **`entrypoint`** (optional): Path to the worker entrypoint file
+  - Default: `undefined` (SPA mode)
+- **`assets`** (optional): Path to static assets directory
+  - Default: `dist/client` (if entrypoint provided), otherwise `dist`
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`dev`**: Local development configuration
+- **`build`**: Build command override
+  - Default: Automatically detected from package manager
+
+## Server-Side Rendering
+
+For SSR applications, provide an entrypoint:
+
+```ts
+const website = await Vite("website", {
+  entrypoint: "src/worker.ts",
+  assets: "dist/client",
+  bindings: {
+    DB: database,
+  },
+});
+```
+
+## Local Development
+
+The Alchemy Vite plugin automatically:
+
+- Configures Cloudflare Workers runtime
+- Provides access to bindings in development
+- Ignores `.alchemy` directory from file watching
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [Worker](/resources/cloudflare/worker) - Cloudflare Workers deployment
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage

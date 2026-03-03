@@ -1,0 +1,258 @@
+---
+title: Neon
+description: API reference for Neon serverless PostgreSQL resources
+---
+
+# Neon
+
+Neon is a serverless PostgreSQL platform that provides instant branching, autoscaling, and a generous free tier.
+
+## Resources
+
+### NeonProject
+
+Creates a Neon serverless PostgreSQL project.
+
+<CodeGroup>
+```typescript Basic Project
+import { NeonProject } from "alchemy/neon";
+
+const project = await NeonProject("my-project", {
+  name: "My Project"
+});
+```
+
+```typescript Custom Region and Version
+import { NeonProject } from "alchemy/neon";
+
+const project = await NeonProject("eu-project", {
+  name: "My EU Project",
+  region_id: "aws-eu-west-2",
+  pg_version: 16,
+  apiKey: alchemy.secret.env.NEON_API_KEY
+});
+```
+
+```typescript Adopt Existing Project
+import { NeonProject } from "alchemy/neon";
+
+const project = await NeonProject("existing-project", {
+  adopt: true,
+  name: "adjective-noun-123"
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  Name of the project
+</ParamField>
+
+<ParamField path="region_id" type="NeonRegion" default="aws-us-east-1">
+  Region where the project will be provisioned. Available regions:
+  - `aws-us-east-1`
+  - `aws-us-east-2`
+  - `aws-us-west-2`
+  - `aws-eu-central-1`
+  - `aws-eu-west-2`
+  - `aws-ap-southeast-1`
+  - `aws-ap-southeast-2`
+  - `aws-sa-east-1`
+  - `azure-eastus2`
+  - `azure-westus3`
+  - `azure-gwc`
+</ParamField>
+
+<ParamField path="pg_version" type="number" default="16">
+  PostgreSQL version to use. Supported versions: 14, 15, 16, 17, 18
+</ParamField>
+
+<ParamField path="default_branch_name" type="string" default="main">
+  Default branch name
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  When `true`, will adopt an existing project by name
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the database when the resource is destroyed. When false, the database will only be removed from the state but not deleted via API.
+</ParamField>
+
+<ParamField path="history_retention_seconds" type="number" default="86400">
+  History retention seconds for the project
+</ParamField>
+
+<ParamField path="settings" type="ProjectSettingsData">
+  Settings for the project
+</ParamField>
+
+<ParamField path="default_endpoint_settings" type="DefaultEndpointSettings">
+  Default endpoint settings for the project
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The ID of the project
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the Project
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  Time at which the project was created
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  Time at which the project was last updated
+</ResponseField>
+
+<ResponseField name="proxy_host" type="string">
+  Hostname for proxy access
+</ResponseField>
+
+<ResponseField name="region_id" type="NeonRegion">
+  Region where the project is provisioned
+</ResponseField>
+
+<ResponseField name="pg_version" type="number">
+  PostgreSQL version used by the project
+</ResponseField>
+
+<ResponseField name="connection_uris" type="NeonConnectionUri[]">
+  Connection URIs for the databases
+</ResponseField>
+
+<ResponseField name="roles" type="NeonRole[]">
+  Database roles created with the project
+</ResponseField>
+
+<ResponseField name="databases" type="Database[]">
+  Databases created with the project
+</ResponseField>
+
+<ResponseField name="branch" type="Branch">
+  Default branch information
+</ResponseField>
+
+<ResponseField name="endpoints" type="Endpoint[]">
+  Compute endpoints for the project
+</ResponseField>
+
+### NeonBranch
+
+Creates a branch in a Neon project.
+
+<CodeGroup>
+```typescript Basic Branch
+import { NeonBranch } from "alchemy/neon";
+
+const branch = await NeonBranch("feature-branch", {
+  project: project,
+  endpoints: [{ type: "read-write" }]
+});
+```
+
+```typescript Branch from Point in Time
+import { NeonBranch } from "alchemy/neon";
+
+const branch = await NeonBranch("recovery-branch", {
+  project: project,
+  parentTimestamp: "2024-02-26T12:00:00Z",
+  endpoints: [{ type: "read-write" }]
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="project" type="string | NeonProject" required>
+  The project to create the new branch in. This can be a Project object or an ID string.
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name of the branch
+</ParamField>
+
+<ParamField path="protected" type="boolean" default="false">
+  Whether the branch is protected
+</ParamField>
+
+<ParamField path="parentBranch" type="string | NeonBranch | Branch">
+  The parent branch to create the new branch from. Default is the project's default branch. This can be a Branch object or an ID string beginning with `br-`.
+</ParamField>
+
+<ParamField path="parentLsn" type="string">
+  A Log Sequence Number (LSN) on the parent branch. The branch will be created with data from this LSN.
+</ParamField>
+
+<ParamField path="parentTimestamp" type="string">
+  A timestamp identifying a point in time on the parent branch. The branch will be created with data starting from this point in time. The timestamp must be provided in ISO 8601 format; for example: `2024-02-26T12:00:00Z`.
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  When `true`, will adopt an existing branch by name
+</ParamField>
+
+<ParamField path="expiresAt" type="string">
+  The timestamp when the branch is scheduled to expire and be automatically deleted. Must be set following the RFC 3339, section 5.6 format with precision up to seconds (such as 2025-06-09T18:02:16Z).
+</ParamField>
+
+<ParamField path="initSource" type="'schema-only' | 'parent-data'" default="parent-data">
+  The source of initialization for the branch:
+  - `schema-only` - creates a new root branch containing only the schema
+  - `parent-data` - creates the branch with both schema and data from the parent
+</ParamField>
+
+<ParamField path="endpoints" type="BranchCreateRequestEndpointOptions[]" required>
+  The endpoints to create for the branch. If you do not configure endpoints, you will not be able to connect to the branch.
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The branch ID. This value is generated when a branch is created. A branch_id value has a br- prefix.
+</ResponseField>
+
+<ResponseField name="projectId" type="string">
+  The ID of the project to which the branch belongs
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the branch
+</ResponseField>
+
+<ResponseField name="protected" type="boolean">
+  Whether the branch is protected
+</ResponseField>
+
+<ResponseField name="default" type="boolean">
+  Whether the branch is the default branch
+</ResponseField>
+
+<ResponseField name="createdAt" type="Date">
+  The timestamp when the branch was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="Date">
+  The timestamp when the branch was last updated
+</ResponseField>
+
+<ResponseField name="endpoints" type="Endpoint[]">
+  The endpoints for the branch
+</ResponseField>
+
+<ResponseField name="databases" type="Database[]">
+  The databases for the branch
+</ResponseField>
+
+<ResponseField name="roles" type="NeonRole[]">
+  The roles for the branch
+</ResponseField>
+
+<ResponseField name="connectionUris" type="NeonConnectionUri[]">
+  The connection URIs for the branch
+</ResponseField>

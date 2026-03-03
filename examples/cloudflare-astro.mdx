@@ -1,0 +1,123 @@
+---
+title: Cloudflare Astro
+description: Deploy an Astro site to Cloudflare with edge rendering
+---
+
+# Cloudflare Astro Example
+
+This example shows how to deploy an Astro site to Cloudflare with local development support.
+
+## Features
+
+- **Astro**: Modern static site generator with islands architecture
+- **Edge Rendering**: SSR at the edge with Cloudflare Workers
+- **Local Development**: Integrated dev server
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install astro @astrojs/cloudflare
+```
+
+### Create alchemy.run.ts
+
+Create your infrastructure configuration:
+
+```ts
+import alchemy from "alchemy";
+import { Astro } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-astro");
+
+export const website = await Astro("website", {
+  name: `${app.name}-${app.stage}-website`,
+  dev: {
+    command: "astro dev --port 5000",
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Configure Astro
+
+Create `astro.config.mjs`:
+
+```js
+import { defineConfig } from 'astro/config';
+import cloudflare from '@astrojs/cloudflare';
+
+export default defineConfig({
+  output: 'server',
+  adapter: cloudflare(),
+});
+```
+
+### Create Pages
+
+Create `src/pages/index.astro`:
+
+```astro
+---
+const title = "Astro on Cloudflare";
+---
+
+<html>
+  <head>
+    <title>{title}</title>
+  </head>
+  <body>
+    <h1>{title}</h1>
+    <p>Your Astro site is running on Cloudflare Workers!</p>
+  </body>
+</html>
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+For local development:
+
+```bash
+npm exec tsx alchemy.run.ts --local
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Local Development
+
+The `dev` configuration integrates with Astro's dev server:
+
+```ts
+dev: {
+  command: "astro dev --port 5000",
+}
+```
+
+### Named Resources
+
+Resources use a naming convention based on app name and stage:
+
+```ts
+name: `${app.name}-${app.stage}-website`
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-astro](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-astro)

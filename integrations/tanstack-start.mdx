@@ -1,0 +1,251 @@
+---
+title: TanStack Start
+description: Deploy TanStack Start applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [TanStack Start](https://tanstack.com/start) applications to Cloudflare Workers with automatic configuration.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy @tanstack/react-start @tanstack/react-start-cloudflare
+```
+
+## Configuration
+
+<Steps>
+
+### Configure Vite Plugin
+
+Add the Alchemy plugin to your `vite.config.ts`:
+
+```ts
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import alchemy from "alchemy/cloudflare/tanstack-start";
+import { defineConfig } from "vite";
+
+const config = defineConfig({
+  plugins: [
+    alchemy(),
+    tanstackStart(),
+    viteReact(),
+  ],
+});
+
+export default config;
+```
+
+### Create Server Entry Point (Optional)
+
+Create a `src/server.ts` file for custom server configuration:
+
+```ts
+import { createRequestHandler } from "@tanstack/react-start-cloudflare";
+import * as build from "@tanstack/react-start/server-entry";
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
+    const handler = createRequestHandler({ build });
+    return handler(request, { env, ctx });
+  },
+};
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { KVNamespace, TanStackStart } from "alchemy/cloudflare";
+
+const app = await alchemy("my-tanstack-app");
+
+const kv = await KVNamespace("kv", {
+  title: `${app.name}-${app.stage}-kv`,
+});
+
+const website = await TanStackStart("website", {
+  bindings: {
+    KV: kv,
+    API_SECRET: alchemy.secret.env.API_SECRET,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `dist/server/index.js`
+- **`assets`**: Static assets directory
+  - Default: `dist/client`
+- **`wrangler.main`**: Path to server entry point
+  - Default: `src/server.ts` (if exists), otherwise uses `@tanstack/react-start/server-entry`
+- **`compatibility`**: Node.js compatibility mode
+  - Default: `"node"`
+- **`noBundle`**: Skip bundling
+  - Default: `true`
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your TanStack Start application:
+
+### Server Functions
+
+```ts
+import { createServerFn } from "@tanstack/react-start/server";
+import { getWebRequest } from "vinxi/http";
+
+export const getUsers = createServerFn("GET", async () => {
+  const request = getWebRequest();
+  const env = request.env as Env;
+  const db = env.DB;
+  
+  const result = await db.prepare("SELECT * FROM users").all();
+  return result.results;
+});
+```
+
+### API Routes
+
+```ts
+// src/routes/api.users.$id.ts
+import { getWebRequest } from "vinxi/http";
+
+export const GET = async ({ params }: { params: { id: string } }) => {
+  const request = getWebRequest();
+  const env = request.env as Env;
+  const kv = env.KV;
+  
+  const user = await kv.get(`user:${params.id}`);
+  return new Response(user, {
+    headers: { "Content-Type": "application/json" },
+  });
+};
+```
+
+### Loaders
+
+```ts
+import { createFileRoute } from "@tanstack/react-router";
+import { getWebRequest } from "vinxi/http";
+
+export const Route = createFileRoute("/users")({
+  loader: async () => {
+    const request = getWebRequest();
+    const env = request.env as Env;
+    const db = env.DB;
+    
+    const users = await db.prepare("SELECT * FROM users").all();
+    return { users: users.results };
+  },
+});
+```
+
+## TypeScript Configuration
+
+Define types for your Cloudflare bindings:
+
+```ts
+// src/env.d.ts
+import type { D1Database, KVNamespace } from "@cloudflare/workers-types";
+
+declare global {
+  interface Env {
+    DB: D1Database;
+    KV: KVNamespace;
+    API_SECRET: string;
+  }
+}
+
+export {};
+```
+
+## Local Development
+
+Start the TanStack Start dev server:
+
+```bash
+npm run dev
+```
+
+The Alchemy Vite plugin provides:
+
+- Local emulation of Cloudflare bindings
+- Hot module replacement
+- Fast refresh
+
+### Custom Dev Configuration
+
+```ts
+const website = await TanStackStart("website", {
+  dev: {
+    command: "vite dev --port 3000",
+    domain: "localhost:3000",
+  },
+});
+```
+
+## Server Entry Point
+
+The resource automatically detects your server entry point:
+
+- If `src/server.ts` exists, it will be used
+- Otherwise, falls back to `@tanstack/react-start/server-entry`
+
+### Custom Server Entry
+
+Specify a custom server entry:
+
+```ts
+const website = await TanStackStart("website", {
+  wrangler: {
+    main: "src/custom-server.ts",
+  },
+});
+```
+
+## Node.js Compatibility
+
+TanStack Start automatically enables Node.js compatibility:
+
+- Node.js built-in modules
+- npm packages with Node.js dependencies
+- Full TanStack Start feature set
+
+## Deployment Best Practices
+
+- Keep `dist/` directory in `.gitignore`
+- Use environment variables for secrets via `alchemy.secret.env.X`
+- Test locally with Vite dev server
+- Configure proper TypeScript types for bindings
+- Use server functions for data fetching
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [Worker](/resources/cloudflare/worker) - Cloudflare Workers deployment
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database

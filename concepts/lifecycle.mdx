@@ -1,0 +1,613 @@
+---
+title: Lifecycle
+description: Deep dive into Alchemy's resource lifecycle and deployment phases
+---
+
+# Lifecycle
+
+Alchemy manages infrastructure through a well-defined lifecycle that handles creation, updates, and deletion of resources. Understanding this lifecycle is essential for building reliable infrastructure.
+
+## Deployment Phases
+
+Alchemy applications operate in one of three phases:
+
+### Up Phase (Default)
+
+The **up** phase creates and updates resources:
+
+```bash
+bun ./alchemy.run.ts
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  phase: "up"  // Default, usually omitted
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// Resource is created or updated
+
+await app.finalize();
+```
+
+<Info>
+  The up phase is the default. You typically don't need to specify it explicitly.
+</Info>
+
+### Destroy Phase
+
+The **destroy** phase deletes all resources:
+
+```bash
+bun ./alchemy.run.ts --destroy
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  phase: "destroy"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// Resource is deleted
+
+await app.finalize();
+```
+
+<Warning>
+  Destroy phase permanently deletes infrastructure. Use with caution, especially in production.
+</Warning>
+
+### Read Phase
+
+The **read** phase retrieves resource state without making changes:
+
+```bash
+bun ./alchemy.run.ts --read
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  phase: "read"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// Returns existing resource from state
+console.log(worker.url);
+// No changes are made
+
+await app.finalize();
+```
+
+<Tip>
+  Read phase is useful for inspecting deployed infrastructure or in multi-app deployments where one app depends on another.
+</Tip>
+
+## Resource Lifecycle Phases
+
+Individual resources go through their own lifecycle phases:
+
+### Create Phase
+
+When a resource doesn't exist in state:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    console.log("Phase:", this.phase); // "create"
+    console.log("Output:", this.output); // undefined
+    console.log("Props:", this.props); // undefined
+    
+    // Provision new infrastructure
+    const result = await api.createResource({
+      name: props.name,
+      config: props.config
+    });
+    
+    return {
+      id,
+      name: result.name,
+      resourceId: result.id
+    };
+  }
+);
+```
+
+<Steps>
+  <Step title="Handler invoked">
+    Resource handler called with phase "create"
+  </Step>
+  <Step title="Infrastructure provisioned">
+    API calls create the actual infrastructure
+  </Step>
+  <Step title="State saved">
+    Return value is saved to state with status "created"
+  </Step>
+</Steps>
+
+### Update Phase
+
+When resource exists but props have changed:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    if (this.phase === "update") {
+      console.log("Previous output:", this.output);
+      console.log("Previous props:", this.props);
+      
+      // Check for immutable property changes
+      if (this.output.name !== props.name) {
+        // Name is immutable - trigger replacement
+        return this.replace();
+      }
+      
+      // Update mutable properties
+      const result = await api.updateResource(
+        this.output.resourceId,
+        { config: props.config }
+      );
+      
+      return {
+        id,
+        name: this.output.name,
+        resourceId: this.output.resourceId,
+        config: result.config
+      };
+    }
+    
+    // Create logic...
+  }
+);
+```
+
+<Steps>
+  <Step title="Props comparison">
+    Alchemy detects props have changed from state
+  </Step>
+  <Step title="Handler invoked">
+    Resource handler called with phase "update"
+  </Step>
+  <Step title="Infrastructure updated">
+    API calls update the existing infrastructure
+  </Step>
+  <Step title="State updated">
+    New state saved with old props preserved in `oldProps`
+  </Step>
+</Steps>
+
+### Delete Phase
+
+When resource is removed from code or explicitly destroyed:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    if (this.phase === "delete") {
+      console.log("Deleting:", this.output);
+      
+      // Clean up infrastructure
+      try {
+        await api.deleteResource(this.output.resourceId);
+      } catch (error) {
+        if (error.status !== 404) {
+          throw error; // Re-throw unless already deleted
+        }
+      }
+      
+      // Signal deletion complete
+      return this.destroy();
+    }
+    
+    // Create/update logic...
+  }
+);
+```
+
+<Steps>
+  <Step title="Orphan detection OR explicit destroy">
+    Resource exists in state but not in code, or app in destroy phase
+  </Step>
+  <Step title="Handler invoked">
+    Resource handler called with phase "delete"
+  </Step>
+  <Step title="Infrastructure deleted">
+    API calls remove the infrastructure
+  </Step>
+  <Step title="State removed">
+    `this.destroy()` deletes the state file
+  </Step>
+</Steps>
+
+<Warning>
+  Always call `this.destroy()` in the delete phase. Without it, Alchemy won't remove the state.
+</Warning>
+
+## Lifecycle Transitions
+
+### First Deployment
+
+```typescript
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// Phase: create
+// Creates worker and saves state
+
+await app.finalize();
+```
+
+State file created:
+```json
+{
+  "kind": "cloudflare::Worker",
+  "id": "api",
+  "status": "created",
+  "props": { "entrypoint": "./src/api.ts" },
+  "output": { "url": "https://api.worker.dev" }
+}
+```
+
+### Second Deployment (No Changes)
+
+```typescript
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+// Props unchanged - no update needed
+// Returns existing state
+
+await app.finalize();
+```
+
+<Info>
+  If props haven't changed, Alchemy skips the update unless `--force` is used.
+</Info>
+
+### Third Deployment (Props Changed)
+
+```typescript
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  compatibilityFlags: ["nodejs_compat"]  // New prop
+});
+// Phase: update
+// Updates worker with new config
+
+await app.finalize();
+```
+
+State updated:
+```json
+{
+  "kind": "cloudflare::Worker",
+  "id": "api",
+  "status": "updated",
+  "props": { 
+    "entrypoint": "./src/api.ts",
+    "compatibilityFlags": ["nodejs_compat"]
+  },
+  "oldProps": { "entrypoint": "./src/api.ts" },
+  "output": { "url": "https://api.worker.dev" }
+}
+```
+
+### Fourth Deployment (Resource Removed)
+
+```typescript
+const app = await alchemy("my-app");
+
+// Worker not created anymore
+
+await app.finalize();
+// Orphan detected: "api" exists in state but not in code
+// Phase: delete
+// Worker destroyed and state removed
+```
+
+## Resource Replacement
+
+Some changes require replacing a resource entirely:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    // Check for immutable property changes
+    if (this.phase === "update" && this.output.region !== props.region) {
+      // Region can't be changed - must recreate
+      return this.replace();
+    }
+    
+    // Normal create/update logic
+  }
+);
+```
+
+Replacement workflow:
+
+<Steps>
+  <Step title="Detect immutable change">
+    `this.replace()` is called during update phase
+  </Step>
+  <Step title="Mark for replacement">
+    Old resource is added to pending deletions
+  </Step>
+  <Step title="Create new resource">
+    Handler is called again in "create" phase with `isReplacement: true`
+  </Step>
+  <Step title="Delete old resource">
+    After new resource succeeds, old resource is destroyed
+  </Step>
+  <Step title="Update state">
+    State points to new resource
+  </Step>
+</Steps>
+
+<Warning>
+  Replacement causes downtime as the old resource is deleted before the new one is fully ready.
+</Warning>
+
+## Finalization
+
+The finalization process runs after all resources are created:
+
+```typescript
+const app = await alchemy("my-app");
+
+// Create resources
+const worker = await Worker("api", { ... });
+const bucket = await R2Bucket("storage", { ... });
+
+// Finalize - critical step!
+await app.finalize();
+```
+
+Finalization steps:
+
+<Steps>
+  <Step title="Execute deferred operations">
+    Operations registered with `scope.defer()` run
+  </Step>
+  <Step title="Finalize child scopes">
+    Recursively finalize nested scopes
+  </Step>
+  <Step title="Detect orphaned resources">
+    Compare state with resources created in code
+  </Step>
+  <Step title="Destroy pending deletions">
+    Delete resources marked for replacement
+  </Step>
+  <Step title="Destroy orphans">
+    Delete resources no longer in code
+  </Step>
+  <Step title="Run cleanup handlers">
+    Execute functions registered with `scope.onCleanup()`
+  </Step>
+</Steps>
+
+<Warning>
+  Forgetting `await app.finalize()` means orphaned resources won't be cleaned up!
+</Warning>
+
+## Deferred Operations
+
+Defer operations until finalization:
+
+```typescript
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", { ... });
+
+// Defer operation until finalization
+const result = app.defer(async () => {
+  // This runs during app.finalize()
+  const response = await fetch(worker.url);
+  return response.text();
+});
+
+await app.finalize();
+
+// Now the deferred operation has completed
+const text = await result;
+console.log(text);
+```
+
+<Tip>
+  Deferred operations are useful for post-deployment validations or setup that requires all resources to exist.
+</Tip>
+
+## Cleanup Handlers
+
+Register cleanup for process exit:
+
+```typescript
+const app = await alchemy("my-app");
+
+await alchemy.run("dev-server", async (scope) => {
+  const server = await startServer();
+  
+  // Register cleanup
+  scope.onCleanup(async () => {
+    console.log("Shutting down server...");
+    await server.close();
+  });
+});
+
+await app.finalize();
+
+// When process exits (Ctrl+C, etc.):
+// - Cleanup handlers run
+// - Server is gracefully shut down
+```
+
+## Destroy Strategies
+
+Control how resources are destroyed:
+
+### Sequential (Default)
+
+Destroy resources one at a time:
+
+```typescript
+const app = await alchemy("my-app", {
+  destroyStrategy: "sequential"
+});
+```
+
+### Parallel
+
+Destroy all resources concurrently:
+
+```typescript
+const app = await alchemy("my-app", {
+  destroyStrategy: "parallel"
+});
+```
+
+### Per-Resource Strategy
+
+Override strategy for specific resources:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  { destroyStrategy: "parallel" },
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    // Implementation
+  }
+);
+```
+
+<Info>
+  Sequential is safer but slower. Parallel is faster but may cause issues if resources have dependencies.
+</Info>
+
+## Force Mode
+
+Force updates even when props haven't changed:
+
+```bash
+bun ./alchemy.run.ts --force
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  force: true
+});
+```
+
+Use cases:
+- Recover from state corruption
+- Apply provider-side changes
+- Debug update logic
+
+## Adoption
+
+Adopt existing resources:
+
+```bash
+bun ./alchemy.run.ts --adopt
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  adopt: true
+});
+
+const worker = await Worker("existing-worker", {
+  name: "my-existing-worker"
+});
+// If worker exists: adopts it
+// If worker doesn't exist: creates it
+```
+
+<Tip>
+  Adoption is useful for migrating existing infrastructure to Alchemy management.
+</Tip>
+
+## Error Handling
+
+Handling errors during lifecycle:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    if (this.phase === "delete") {
+      try {
+        await api.deleteResource(this.output.resourceId);
+      } catch (error) {
+        // Handle deletion errors gracefully
+        if (error.status === 404) {
+          // Already deleted - OK
+        } else if (error.message.includes("in use")) {
+          // Resource is in use - warn but continue
+          console.warn(`Resource ${id} still in use, skipping deletion`);
+        } else {
+          // Unexpected error - fail
+          throw error;
+        }
+      }
+      
+      return this.destroy();
+    }
+    
+    // Create/update logic
+  }
+);
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Handle all phases">
+    Implement create, update, and delete logic completely
+  </Step>
+  <Step title="Validate immutability">
+    Call `this.replace()` when immutable properties change
+  </Step>
+  <Step title="Graceful deletion">
+    Handle 404 errors during deletion (resource already gone)
+  </Step>
+  <Step title="Always finalize">
+    Call `await app.finalize()` to clean up orphans
+  </Step>
+  <Step title="Use deferred operations">
+    Defer post-deployment tasks until all resources exist
+  </Step>
+  <Step title="Register cleanups">
+    Use `scope.onCleanup()` for process exit handlers
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Resources" icon="cube" href="/concepts/resources">
+    Implement resources with proper lifecycle handling
+  </Card>
+  <Card title="State Management" icon="database" href="/concepts/state-management">
+    Understand how state drives the lifecycle
+  </Card>
+  <Card title="Scopes" icon="folder-tree" href="/concepts/scopes">
+    Manage scope-level lifecycle and finalization
+  </Card>
+  <Card title="Deployment" icon="rocket" href="/essentials/deployment">
+    Deploy infrastructure using lifecycle phases
+  </Card>
+</CardGroup>

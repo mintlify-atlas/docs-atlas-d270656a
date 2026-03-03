@@ -1,0 +1,158 @@
+---
+title: Stripe provider
+description: Manage payment processing and webhook integrations
+---
+
+The Stripe provider enables you to manage Stripe webhook endpoints and integrate payment processing into your applications.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy stripe
+```
+```bash yarn
+yarn add alchemy stripe
+```
+```bash pnpm
+pnpm add alchemy stripe
+```
+```bash bun
+bun add alchemy stripe
+```
+</CodeGroup>
+
+## Credentials
+
+Get your Stripe API keys from the [Stripe Dashboard](https://dashboard.stripe.com/apikeys) and set them as environment variables:
+
+```bash
+export STRIPE_SECRET_KEY="sk_test_..."
+export STRIPE_PUBLISHABLE_KEY="pk_test_..."
+```
+
+## Available resources
+
+- **WebhookEndpoint** - Stripe webhook endpoint configuration
+
+## Example usage
+
+```typescript
+import alchemy from "alchemy";
+import { WebhookEndpoint } from "alchemy/stripe";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("stripe-app");
+
+// Create a Worker to handle Stripe webhooks
+const webhookHandler = await Worker("stripe-webhook", {
+  entrypoint: "./src/stripe-webhook.ts",
+  bindings: {
+    STRIPE_SECRET_KEY: alchemy.secret.env.STRIPE_SECRET_KEY,
+  },
+  url: true,
+});
+
+// Configure Stripe webhook endpoint
+const webhook = await WebhookEndpoint("webhook", {
+  url: webhookHandler.url,
+  enabled_events: [
+    "payment_intent.succeeded",
+    "payment_intent.payment_failed",
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    "customer.subscription.deleted",
+    "invoice.paid",
+    "invoice.payment_failed",
+  ],
+  description: "Main webhook endpoint for payment processing",
+});
+
+console.log(`Webhook URL: ${webhook.url}`);
+console.log(`Webhook secret: ${webhook.secret}`);
+
+await app.finalize();
+```
+
+## Webhook verification
+
+Verify webhook signatures in your handler:
+
+```typescript
+import Stripe from "stripe";
+
+export default {
+  async fetch(request: Request, env: Env) {
+    const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+    const signature = request.headers.get("stripe-signature");
+    const body = await request.text();
+    
+    try {
+      const event = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        env.WEBHOOK_SECRET
+      );
+      
+      // Handle the event
+      switch (event.type) {
+        case "payment_intent.succeeded":
+          const paymentIntent = event.data.object;
+          // Handle successful payment
+          break;
+        case "customer.subscription.created":
+          const subscription = event.data.object;
+          // Handle new subscription
+          break;
+      }
+      
+      return new Response(JSON.stringify({ received: true }));
+    } catch (err) {
+      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    }
+  },
+};
+```
+
+## Payment processing example
+
+Integrate Stripe with a Cloudflare Worker:
+
+```typescript
+import { Worker } from "alchemy/cloudflare";
+import { WebhookEndpoint } from "alchemy/stripe";
+
+// API Worker for creating payment intents
+const api = await Worker("payment-api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    STRIPE_SECRET_KEY: alchemy.secret.env.STRIPE_SECRET_KEY,
+  },
+  url: true,
+});
+
+// Webhook Worker for handling events
+const webhookWorker = await Worker("webhook", {
+  entrypoint: "./src/webhook.ts",
+  bindings: {
+    STRIPE_SECRET_KEY: alchemy.secret.env.STRIPE_SECRET_KEY,
+  },
+  url: true,
+});
+
+const webhook = await WebhookEndpoint("webhook", {
+  url: webhookWorker.url,
+  enabled_events: ["payment_intent.succeeded"],
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Stripe API" icon="stripe" href="/api/services/stripe">
+    Complete API reference
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="/guides/creating-resources">
+    Learn about webhook patterns
+  </Card>
+</CardGroup>

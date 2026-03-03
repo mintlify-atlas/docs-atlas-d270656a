@@ -1,0 +1,203 @@
+---
+title: "alchemy()"
+description: "Create and manage Alchemy applications with automatic secret handling and CLI argument parsing"
+---
+
+# alchemy()
+
+The main entry point for creating Alchemy applications. Creates an application scope with the given name and options, managing resources with proper secret handling and lifecycle management.
+
+## Signature
+
+```typescript
+function alchemy(
+  appName: string,
+  options?: AlchemyOptions
+): Promise<Scope>
+```
+
+## Parameters
+
+<ParamField path="appName" type="string" required>
+  The name of the application. Used as the root scope identifier and for generating physical resource names.
+</ParamField>
+
+<ParamField path="options" type="AlchemyOptions">
+  Configuration options for the application scope.
+
+  <ParamField path="options.phase" type="'up' | 'destroy' | 'read'" default="'up'">
+    Determines whether resources will be created/updated or deleted.
+    - `'up'`: Create or update resources
+    - `'destroy'`: Delete resources
+    - `'read'`: Read-only mode, no changes made
+  </ParamField>
+
+  <ParamField path="options.stage" type="string" default="process.env.USER">
+    Name to scope the resource state under (e.g. `.alchemy/{stage}/..`).
+  </ParamField>
+
+  <ParamField path="options.password" type="string">
+    A passphrase to use to encrypt/decrypt secrets. Required if using `alchemy.secret()` in this scope.
+  </ParamField>
+
+  <ParamField path="options.local" type="boolean" default="false">
+    Determines if resources should be simulated locally (where possible). Automatically set to `true` if ran with `alchemy dev` or `--dev` flag.
+  </ParamField>
+
+  <ParamField path="options.watch" type="boolean" default="false">
+    Determines if local changes to resources should be reactively pushed to the local or remote environment. Automatically set to `true` if ran with `alchemy dev`, `alchemy watch`, or `--watch` flag.
+  </ParamField>
+
+  <ParamField path="options.force" type="boolean" default="false">
+    Apply updates to resources even if there are no changes.
+  </ParamField>
+
+  <ParamField path="options.tunnel" type="boolean" default="false">
+    Whether to create a tunnel for supported resources.
+  </ParamField>
+
+  <ParamField path="options.quiet" type="boolean" default="false">
+    If true, will not print any Create/Update/Delete messages.
+  </ParamField>
+
+  <ParamField path="options.destroyOrphans" type="boolean" default="true">
+    If true, will prune resources that were dropped from the root stack.
+  </ParamField>
+
+  <ParamField path="options.destroyStrategy" type="'sequential' | 'parallel'" default="'sequential'">
+    The strategy to use when destroying resources.
+  </ParamField>
+
+  <ParamField path="options.stateStore" type="StateStoreType">
+    A custom state store to use instead of the default file system store.
+  </ParamField>
+
+  <ParamField path="options.adopt" type="boolean" default="false">
+    Whether to adopt resources if they already exist but are not yet managed by your Alchemy app.
+  </ParamField>
+
+  <ParamField path="options.eraseSecrets" type="boolean" default="false">
+    Skip decrypting secrets and treat them as undefined. Requires `--force` to be enabled. Useful for recovering from lost encryption passwords.
+  </ParamField>
+
+  <ParamField path="options.rootDir" type="string" default="process.cwd()">
+    The root directory of the project.
+  </ParamField>
+
+  <ParamField path="options.profile" type="string">
+    The Alchemy profile to use for authorizing requests.
+  </ParamField>
+
+  <ParamField path="options.noTrack" type="boolean" default="false">
+    Whether to stop sending anonymous telemetry data to the Alchemy team. You can also opt out by setting the `DO_NOT_TRACK` or `ALCHEMY_TELEMETRY_DISABLED` environment variables.
+  </ParamField>
+</ParamField>
+
+## Returns
+
+<ResponseField name="Scope" type="Scope">
+  A Scope instance representing the root application scope. See [Scope API](/api/scope) for available methods and properties.
+</ResponseField>
+
+## CLI Arguments
+
+The `alchemy()` function automatically parses the following CLI arguments:
+
+- `--destroy`: Sets `phase` to `"destroy"`
+- `--read`: Sets `phase` to `"read"`
+- `--quiet`: Suppresses log output
+- `--stage <name>`: Sets the stage name
+- `--local` or `--dev`: Enables local development mode
+- `--watch`: Enables watch mode
+- `--force`: Forces resource updates
+- `--tunnel`: Enables tunneling for supported resources
+- `--adopt`: Enables resource adoption
+- `--erase-secrets`: Erases secrets (requires `--force`)
+
+## Environment Variables
+
+The following environment variables are recognized:
+
+- `ALCHEMY_PASSWORD`: Default password for secret encryption
+- `ALCHEMY_STAGE`: Default stage name
+- `STAGE`: Alternative stage name (lower priority)
+- `USER` or `USERNAME`: Default stage name if not otherwise specified
+- `DO_NOT_TRACK` or `ALCHEMY_TELEMETRY_DISABLED`: Disable telemetry
+
+## Examples
+
+### Basic Usage
+
+```typescript
+// Simple usage with automatic CLI argument parsing
+const app = await alchemy("my-app");
+// Now supports: --destroy, --read, --quiet, --stage my-stage
+
+// Create resources
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket"
+});
+
+await app.finalize();
+```
+
+### With Explicit Options
+
+```typescript
+// Create an application scope with explicit options (overrides CLI args)
+const app = await alchemy("github:alchemy", {
+  stage: "prod",
+  phase: "up",
+  // Required for encrypting/decrypting secrets
+  password: process.env.SECRET_PASSPHRASE
+});
+
+// Create a resource with encrypted secrets
+const resource = await Resource("my-resource", {
+  apiKey: alchemy.secret(process.env.API_KEY)
+});
+
+await app.finalize();
+```
+
+### Multiple Stages
+
+```typescript
+// Deploy to different stages based on environment
+const stage = process.env.ENVIRONMENT || "dev";
+
+const app = await alchemy("my-app", {
+  stage,
+  password: process.env.SECRET_PASSPHRASE
+});
+
+const database = await D1Database("db", {
+  name: `my-db-${stage}`
+});
+
+await app.finalize();
+```
+
+### Local Development
+
+```typescript
+// Run with --local or --dev for local simulation
+const app = await alchemy("my-app", {
+  local: true // or use CLI: bun ./alchemy.run.ts --local
+});
+
+// Resources will use local simulators where available
+const worker = await Worker("api", {
+  entrypoint: "./src/worker.ts"
+});
+// Worker runs locally instead of deploying to Cloudflare
+
+await app.finalize();
+```
+
+## Related
+
+- [alchemy.run()](/api/alchemy#run) - Run a function in a new scope
+- [alchemy.destroy()](/api/alchemy#destroy) - Destroy resources
+- [alchemy.secret()](/api/secret) - Create encrypted secrets
+- [Scope](/api/scope) - Scope API reference

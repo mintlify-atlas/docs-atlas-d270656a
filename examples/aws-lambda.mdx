@@ -1,0 +1,292 @@
+---
+title: AWS Lambda
+description: Deploy a serverless Lambda function with DynamoDB, SQS Queue, and Function URL
+---
+
+# AWS Lambda Example
+
+This example demonstrates deploying a serverless application to AWS using Lambda Functions, DynamoDB Tables, SQS Queues, and IAM Roles.
+
+## Features
+
+- **Lambda Function**: Serverless compute with Function URL
+- **DynamoDB Table**: NoSQL database with partition key
+- **SQS Queue**: Message queue for async processing
+- **IAM Role**: Execution role with appropriate permissions
+- **ESBuild Bundle**: Optimized TypeScript bundling
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install -D @types/aws-lambda
+```
+
+### Create alchemy.run.ts
+
+Create your AWS infrastructure:
+
+```ts
+import alchemy from "alchemy";
+import { Function, Queue, Role, Table } from "alchemy/aws";
+import { Bundle } from "alchemy/esbuild";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const app = await alchemy("aws-app");
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const [_queue, table, role] = await Promise.all([
+  Queue("queue", {
+    queueName: `${app.name}-${app.stage}-queue`,
+    visibilityTimeout: 30,
+    messageRetentionPeriod: 345600, // 4 days
+  }),
+
+  // Create DynamoDB table
+  Table("table", {
+    tableName: `${app.name}-${app.stage}-table`,
+    partitionKey: {
+      name: "id",
+      type: "S",
+    },
+  }),
+
+  // Create Lambda execution role with DynamoDB access
+  Role("role", {
+    roleName: `${app.name}-${app.stage}-lambda-role`,
+    assumeRolePolicy: {
+      Version: "2012-10-17",
+      Statement: [
+        {
+          Effect: "Allow",
+          Principal: {
+            Service: "lambda.amazonaws.com",
+          },
+          Action: "sts:AssumeRole",
+        },
+      ],
+    },
+  }),
+]);
+
+// Create Lambda function
+const bundle = await Bundle("api-bundle", {
+  entryPoint: path.join(__dirname, "src", "index.ts"),
+  outdir: ".out",
+  format: "esm",
+  platform: "node",
+  target: "node20",
+  minify: true,
+  sourcemap: true,
+  // Don't bundle aws-sdk as it's provided by Lambda
+  external: ["@aws-sdk/*"],
+});
+
+const _api = await Function("api", {
+  functionName: `${app.name}-${app.stage}-api`,
+  bundle,
+  roleArn: role.arn,
+  handler: "index.handler",
+  environment: {
+    TABLE_NAME: table.tableName,
+  },
+  url: {
+    // Enable public access
+    authType: "NONE",
+    cors: {
+      allowOrigins: ["*"],
+      allowMethods: ["GET", "POST", "PUT", "DELETE"],
+      allowHeaders: ["content-type"],
+    },
+  },
+});
+
+await app.finalize();
+```
+
+### Create Lambda Handler
+
+Create `src/index.ts`:
+
+```ts
+export function handler(_event: any, _context: any) {
+  console.log("Hello, World!");
+  
+  return {
+    statusCode: 200,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: "Hello from Lambda!",
+      timestamp: new Date().toISOString(),
+    }),
+  };
+}
+```
+
+### Enhanced Handler with DynamoDB
+
+For a more complete example with DynamoDB:
+
+```ts
+import { DynamoDBClient, PutItemCommand, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+
+const dynamodb = new DynamoDBClient({});
+const TABLE_NAME = process.env.TABLE_NAME!;
+
+export async function handler(
+  event: APIGatewayProxyEvent
+): Promise<APIGatewayProxyResult> {
+  const method = event.requestContext.http.method;
+  
+  if (method === "POST") {
+    // Create item
+    const body = JSON.parse(event.body || "{}");
+    
+    await dynamodb.send(
+      new PutItemCommand({
+        TableName: TABLE_NAME,
+        Item: {
+          id: { S: crypto.randomUUID() },
+          data: { S: JSON.stringify(body) },
+          createdAt: { N: Date.now().toString() },
+        },
+      })
+    );
+    
+    return {
+      statusCode: 201,
+      body: JSON.stringify({ message: "Created" }),
+    };
+  }
+  
+  if (method === "GET") {
+    // Get item
+    const id = event.queryStringParameters?.id;
+    
+    if (!id) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: "Missing id parameter" }),
+      };
+    }
+    
+    const result = await dynamodb.send(
+      new GetItemCommand({
+        TableName: TABLE_NAME,
+        Key: { id: { S: id } },
+      })
+    );
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify(result.Item || {}),
+    };
+  }
+  
+  return {
+    statusCode: 405,
+    body: JSON.stringify({ error: "Method not allowed" }),
+  };
+}
+```
+
+### Deploy
+
+Deploy to AWS:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### DynamoDB Table
+
+Create a table with partition key:
+
+```ts
+Table("table", {
+  tableName: `${app.name}-${app.stage}-table`,
+  partitionKey: {
+    name: "id",
+    type: "S", // String type
+  },
+})
+```
+
+### IAM Role
+
+Define the Lambda execution role:
+
+```ts
+Role("role", {
+  roleName: `${app.name}-${app.stage}-lambda-role`,
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Principal: { Service: "lambda.amazonaws.com" },
+        Action: "sts:AssumeRole",
+      },
+    ],
+  },
+})
+```
+
+### ESBuild Bundle
+
+Bundle your TypeScript code:
+
+```ts
+const bundle = await Bundle("api-bundle", {
+  entryPoint: path.join(__dirname, "src", "index.ts"),
+  format: "esm",
+  platform: "node",
+  target: "node20",
+  minify: true,
+  external: ["@aws-sdk/*"], // AWS SDK is provided by Lambda runtime
+});
+```
+
+### Function URL
+
+Enable public HTTP access:
+
+```ts
+url: {
+  authType: "NONE",
+  cors: {
+    allowOrigins: ["*"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE"],
+    allowHeaders: ["content-type"],
+  },
+}
+```
+
+### SQS Queue
+
+Create a message queue:
+
+```ts
+Queue("queue", {
+  queueName: `${app.name}-${app.stage}-queue`,
+  visibilityTimeout: 30,
+  messageRetentionPeriod: 345600, // 4 days
+})
+```
+
+## Source Code
+
+View the complete source code: [examples/aws-app](https://github.com/sam-goodwin/alchemy/tree/main/examples/aws-app)

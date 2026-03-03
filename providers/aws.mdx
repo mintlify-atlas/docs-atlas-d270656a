@@ -1,0 +1,223 @@
+---
+title: AWS provider
+description: Deploy Lambda functions, DynamoDB tables, S3 buckets, and other AWS resources
+---
+
+The AWS provider enables you to deploy and manage AWS Lambda functions, DynamoDB tables, S3 buckets, SQS queues, and IAM roles using TypeScript.
+
+## Installation
+
+The AWS provider is included in the main `alchemy` package:
+
+<CodeGroup>
+```bash npm
+npm install alchemy @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3
+```
+```bash yarn
+yarn add alchemy @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3
+```
+```bash pnpm
+pnpm add alchemy @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3
+```
+```bash bun
+bun add alchemy @aws-sdk/client-lambda @aws-sdk/client-dynamodb @aws-sdk/client-s3
+```
+</CodeGroup>
+
+## Credentials
+
+Set up your AWS credentials as environment variables:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_REGION="us-east-1"
+```
+
+<Tip>
+You can also use AWS profiles or IAM roles. Alchemy uses the standard AWS SDK credential chain.
+</Tip>
+
+## Available resources
+
+### Compute
+
+- **[Function](/api/aws/function)** - AWS Lambda functions with configuration
+
+### Storage
+
+- **[Bucket](/api/aws/bucket)** - S3 buckets for object storage
+- **[Table](/api/aws/table)** - DynamoDB tables for NoSQL data
+
+### Messaging
+
+- **[Queue](/api/aws/queue)** - SQS queues for message processing
+- **SES** - Email sending via Simple Email Service
+
+### IAM
+
+- **[Role](/api/aws/role)** - IAM roles for service permissions
+- **[Policy](/api/aws/policy)** - IAM policies for access control
+- **PolicyAttachment** - Attach policies to roles
+
+### Systems Manager
+
+- **SSMParameter** - Parameter Store for configuration
+
+## Example usage
+
+Here's a complete example deploying a Lambda function with DynamoDB and SQS:
+
+```typescript
+import alchemy from "alchemy";
+import { Function, Table, Queue, Role, Policy } from "alchemy/aws";
+
+const app = await alchemy("aws-app");
+
+// DynamoDB table
+const table = await Table("users", {
+  partitionKey: { name: "userId", type: "S" },
+  sortKey: { name: "timestamp", type: "N" },
+  billingMode: "PAY_PER_REQUEST",
+});
+
+// SQS queue
+const queue = await Queue("tasks", {
+  messageRetentionPeriod: 1209600, // 14 days
+  visibilityTimeout: 300, // 5 minutes
+});
+
+// IAM role for Lambda
+const role = await Role("lambda-role", {
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Principal: { Service: "lambda.amazonaws.com" },
+        Action: "sts:AssumeRole",
+      },
+    ],
+  },
+});
+
+// IAM policy
+const policy = await Policy("lambda-policy", {
+  policy: {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Action: ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query"],
+        Resource: table.arn,
+      },
+      {
+        Effect: "Allow",
+        Action: ["sqs:SendMessage", "sqs:ReceiveMessage"],
+        Resource: queue.arn,
+      },
+    ],
+  },
+});
+
+// Lambda function
+const api = await Function("api", {
+  runtime: "nodejs20.x",
+  handler: "index.handler",
+  code: "./src/lambda",
+  role: role,
+  environment: {
+    TABLE_NAME: table.tableName,
+    QUEUE_URL: queue.queueUrl,
+  },
+  url: true, // Enable Function URL
+});
+
+console.log(`Function URL: ${api.functionUrl}`);
+console.log(`Table: ${table.tableName}`);
+console.log(`Queue: ${queue.queueUrl}`);
+
+await app.finalize();
+```
+
+## AWS Control API
+
+Alchemy also provides access to AWS CloudControl API for managing any CloudFormation-supported resource:
+
+```typescript
+import { AwsControl } from "alchemy/aws/control";
+
+// Deploy any CloudFormation resource type
+const vpc = await AwsControl("vpc", {
+  type: "AWS::EC2::VPC",
+  properties: {
+    CidrBlock: "10.0.0.0/16",
+    EnableDnsHostnames: true,
+    EnableDnsSupport: true,
+  },
+});
+```
+
+## VPC and networking
+
+The AWS provider includes EC2 networking resources:
+
+```typescript
+import {
+  InternetGateway,
+  InternetGatewayAttachment,
+  NatGateway,
+  RouteTable,
+  RouteTableAssociation,
+  Subnet,
+  VPC,
+} from "alchemy/aws/ec2";
+
+const vpc = await VPC("vpc", {
+  cidrBlock: "10.0.0.0/16",
+});
+
+const subnet = await Subnet("subnet", {
+  vpc,
+  cidrBlock: "10.0.1.0/24",
+  availabilityZone: "us-east-1a",
+});
+
+const igw = await InternetGateway("igw");
+const attachment = await InternetGatewayAttachment("igw-attachment", {
+  vpc,
+  internetGateway: igw,
+});
+```
+
+## State storage
+
+You can use S3 as a state store for Alchemy:
+
+```typescript
+import { S3StateStore } from "alchemy/aws";
+
+const app = await alchemy("my-app", {
+  state: S3StateStore({
+    bucket: "my-alchemy-state",
+    key: "my-app/state.json",
+  }),
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Lambda Functions" icon="lambda" href="/api/aws/function">
+    Deploy serverless functions
+  </Card>
+  <Card title="DynamoDB Tables" icon="database" href="/api/aws/table">
+    NoSQL database tables
+  </Card>
+  <Card title="Examples" icon="book-open" href="/examples/aws-lambda">
+    Browse AWS examples
+  </Card>
+  <Card title="IAM Roles" icon="shield" href="/api/aws/role">
+    Configure permissions
+  </Card>
+</CardGroup>

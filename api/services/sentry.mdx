@@ -1,0 +1,153 @@
+---
+title: Sentry
+description: API reference for Sentry resources
+---
+
+# Sentry
+
+Manage Sentry projects, teams, and client keys for error tracking and monitoring.
+
+## Resources
+
+### Project
+
+Create and manage Sentry projects.
+
+<CodeGroup>
+```typescript Basic Project
+import { Project } from "alchemy/sentry";
+
+const project = await Project("my-project", {
+  name: "My Project",
+  team: "my-team",
+  organization: "my-org"
+});
+```
+
+```typescript Platform-Specific Project
+import { Project } from "alchemy/sentry";
+
+const project = await Project("js-project", {
+  name: "JavaScript Project",
+  team: "my-team",
+  organization: "my-org",
+  platform: "javascript"
+});
+```
+
+```typescript Custom Project
+import { Project } from "alchemy/sentry";
+
+const project = await Project("custom-project", {
+  name: "Custom Project",
+  team: "my-team",
+  organization: "my-org",
+  slug: "custom-project-slug",
+  defaultRules: false
+});
+```
+
+```typescript Adopt Existing Project
+import { Project } from "alchemy/sentry";
+
+const project = await Project("existing-project", {
+  name: "Existing Project",
+  team: "my-team",
+  organization: "my-org",
+  adopt: true
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="team" type="string" required>
+  The team slug that owns the project
+</ParamField>
+
+<ParamField path="organization" type="string" required>
+  The organization ID or slug that owns the project
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name for the project
+</ParamField>
+
+<ParamField path="slug" type="string">
+  Uniquely identifies a project and is used for the interface
+</ParamField>
+
+<ParamField path="platform" type="string">
+  The platform for the project (e.g., "javascript", "python", "node", "react-native")
+</ParamField>
+
+<ParamField path="defaultRules" type="boolean">
+  Whether to alert on every new issue
+</ParamField>
+
+<ParamField path="authToken" type="Secret">
+  Auth token to use (overrides environment variable)
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing project with the same slug if it exists. If true and a project with the same slug exists, it will be adopted rather than creating a new one.
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The ID of the project
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name for the project
+</ResponseField>
+
+<ResponseField name="team" type="object">
+  The team that owns the project
+  <Expandable>
+    <ResponseField name="id" type="string" />
+    <ResponseField name="name" type="string" />
+    <ResponseField name="slug" type="string" />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="teams" type="array">
+  All teams that have access to the project
+</ResponseField>
+
+<ResponseField name="isBookmarked" type="boolean">
+  Whether the project is bookmarked
+</ResponseField>
+
+<ResponseField name="isMember" type="boolean">
+  Whether the current user is a member of the project
+</ResponseField>
+
+<ResponseField name="access" type="string[]">
+  Access permissions for the project
+</ResponseField>
+
+<ResponseField name="hasAccess" type="boolean">
+  Whether the current user has access to the project
+</ResponseField>
+
+<ResponseField name="dateCreated" type="string">
+  Time at which the project was created
+</ResponseField>
+
+<ResponseField name="environments" type="string[]">
+  List of environments in the project
+</ResponseField>
+
+<ResponseField name="features" type="string[]">
+  List of features enabled for the project
+</ResponseField>
+
+<ResponseField name="firstEvent" type="string | null">
+  Whether the project has received its first event
+</ResponseField>
+
+<ResponseField name="platforms" type="string[]">
+  List of platforms in the project
+</ResponseField>

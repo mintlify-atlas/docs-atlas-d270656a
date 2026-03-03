@@ -1,0 +1,150 @@
+---
+title: Upstash provider
+description: Serverless Redis and Kafka for edge and serverless applications
+---
+
+The Upstash provider enables you to create and manage serverless Redis databases and Kafka clusters optimized for edge and serverless environments.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Get your Upstash credentials from the [Upstash Console](https://console.upstash.com) and set them as environment variables:
+
+```bash
+export UPSTASH_EMAIL="your-email"
+export UPSTASH_API_KEY="your-api-key"
+```
+
+## Available resources
+
+- **RedisDatabase** - Serverless Redis database
+- **KafkaCluster** - Serverless Kafka cluster
+- **KafkaTopic** - Kafka topic within a cluster
+
+## Redis example
+
+```typescript
+import alchemy from "alchemy";
+import { RedisDatabase } from "alchemy/upstash";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("upstash-app");
+
+// Create an Upstash Redis database
+const redis = await RedisDatabase("cache", {
+  name: "my-cache",
+  region: "us-east-1",
+  tls: true,
+  eviction: true,
+  maxDataSize: 100, // MB
+});
+
+// Use with Cloudflare Worker
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    REDIS_URL: redis.endpoint,
+    REDIS_TOKEN: redis.token,
+  },
+});
+
+console.log(`Redis endpoint: ${redis.endpoint}`);
+
+await app.finalize();
+```
+
+## Kafka example
+
+```typescript
+import { KafkaCluster, KafkaTopic } from "alchemy/upstash";
+
+// Create a Kafka cluster
+const kafka = await KafkaCluster("events", {
+  name: "event-stream",
+  region: "us-east-1",
+  multizone: true,
+});
+
+// Create topics
+const userEvents = await KafkaTopic("user-events", {
+  cluster: kafka,
+  name: "user.events",
+  partitions: 3,
+  retentionTime: 604800000, // 7 days in ms
+  retentionSize: 1073741824, // 1GB
+});
+
+const orderEvents = await KafkaTopic("order-events", {
+  cluster: kafka,
+  name: "order.events",
+  partitions: 6,
+});
+
+console.log(`Kafka endpoint: ${kafka.endpoint}`);
+console.log(`Topic: ${userEvents.name}`);
+```
+
+## Redis with REST API
+
+Upstash Redis can be accessed via HTTP:
+
+```typescript
+// In your Worker
+export default {
+  async fetch(request: Request, env: Env) {
+    // Use @upstash/redis
+    const { Redis } = await import("@upstash/redis/cloudflare");
+    
+    const redis = new Redis({
+      url: env.REDIS_URL,
+      token: env.REDIS_TOKEN,
+    });
+    
+    await redis.set("key", "value");
+    const value = await redis.get("key");
+    
+    return Response.json({ value });
+  },
+};
+```
+
+## Global replication
+
+Create globally replicated Redis databases:
+
+```typescript
+const redis = await RedisDatabase("global-cache", {
+  name: "global-cache",
+  region: "us-east-1",
+  primaryRegion: "us-east-1",
+  readRegions: ["eu-west-1", "ap-southeast-1"],
+  tls: true,
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Upstash API" icon="bolt" href="/api/services/upstash">
+    Complete API reference
+  </Card>
+  <Card title="Redis client" icon="database" href="https://upstash.com/docs/redis">
+    Upstash Redis documentation
+  </Card>
+</CardGroup>

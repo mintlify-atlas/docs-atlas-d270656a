@@ -1,0 +1,204 @@
+---
+title: Role
+description: AWS IAM Role resource for identity and access management
+---
+
+# Role
+
+Creates and manages IAM roles with support for inline policies, managed policies, and automatic cleanup of attached policies during deletion.
+
+## Props
+
+<ParamField path="assumeRolePolicy" type="PolicyDocument" required>
+  Policy that defines which entities can assume this role.
+</ParamField>
+
+<ParamField path="roleName" type="string">
+  Name of the IAM role.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the role's purpose.
+</ParamField>
+
+<ParamField path="path" type="string">
+  Optional path prefix for the role.
+</ParamField>
+
+<ParamField path="maxSessionDuration" type="number">
+  Maximum session duration in seconds when assumed.
+  
+  **Default:** `3600` (1 hour)
+</ParamField>
+
+<ParamField path="permissionsBoundary" type="string">
+  ARN of the policy used to set the permissions boundary.
+</ParamField>
+
+<ParamField path="policies" type="Array<object>">
+  Inline policies to embed in the role. Each policy must have a unique name and policy document.
+  
+  <Expandable title="properties">
+    <ParamField path="policies[].policyName" type="string" required>
+      Name of the inline policy.
+    </ParamField>
+    
+    <ParamField path="policies[].policyDocument" type="PolicyDocument" required>
+      The policy document defining permissions.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="managedPolicyArns" type="string[]">
+  List of managed policy ARNs to attach to the role.
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Resource tags for the role.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  ARN of the role.
+</ResponseField>
+
+<ResponseField name="roleName" type="string">
+  Name of the Role.
+</ResponseField>
+
+<ResponseField name="uniqueId" type="string">
+  Unique identifier for the role.
+</ResponseField>
+
+<ResponseField name="roleId" type="string">
+  The stable and unique string identifying the role.
+</ResponseField>
+
+<ResponseField name="createDate" type="Date">
+  When the role was created.
+</ResponseField>
+
+## Examples
+
+### Basic Lambda execution role with inline policy
+
+```typescript
+import { Role } from "alchemy/aws";
+
+const basicRole = await Role("lambda-role", {
+  roleName: "lambda-role",
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: {
+        Service: "lambda.amazonaws.com"
+      },
+      Action: "sts:AssumeRole"
+    }]
+  },
+  description: "Basic Lambda execution role",
+  tags: {
+    Environment: "production"
+  },
+  policies: [{
+    policyName: "logs",
+    policyDocument: {
+      Version: "2012-10-17",
+      Statement: [{
+        Effect: "Allow",
+        Action: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        Resource: "*"
+      }]
+    }
+  }]
+});
+```
+
+### Role with AWS managed policies
+
+```typescript
+import { Role } from "alchemy/aws";
+
+const managedRole = await Role("readonly-role", {
+  roleName: "readonly-role",
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: {
+        Service: "lambda.amazonaws.com"
+      },
+      Action: "sts:AssumeRole"
+    }]
+  },
+  description: "Role with managed policies",
+  managedPolicyArns: [
+    "arn:aws:iam::aws:policy/ReadOnlyAccess"
+  ],
+  tags: {
+    Environment: "production"
+  }
+});
+```
+
+### Role with multiple inline policies and custom session duration
+
+```typescript
+import { Role } from "alchemy/aws";
+
+const customRole = await Role("custom-role", {
+  roleName: "custom-role",
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: {
+        Service: "lambda.amazonaws.com"
+      },
+      Action: "sts:AssumeRole"
+    }]
+  },
+  description: "Role with multiple policies",
+  maxSessionDuration: 7200,
+  policies: [
+    {
+      policyName: "logs",
+      policyDocument: {
+        Version: "2012-10-17",
+        Statement: [{
+          Effect: "Allow",
+          Action: [
+            "logs:CreateLogGroup",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents"
+          ],
+          Resource: "*"
+        }]
+      }
+    },
+    {
+      policyName: "s3",
+      policyDocument: {
+        Version: "2012-10-17",
+        Statement: [{
+          Effect: "Allow",
+          Action: "s3:ListBucket",
+          Resource: "*"
+        }]
+      }
+    }
+  ],
+  tags: {
+    Environment: "production",
+    Updated: "true"
+  }
+});
+```

@@ -1,0 +1,114 @@
+---
+title: DurableObjectNamespace
+description: API reference for Cloudflare Durable Object Namespace
+---
+
+# DurableObjectNamespace
+
+Creates a Durable Object namespace binding for stateful objects in Cloudflare Workers.
+
+## Props
+
+<ParamField path="className" type="string" required>
+  Name of the class that implements the Durable Object.
+
+  ```ts
+  const rooms = DurableObjectNamespace("chat-rooms", {
+    className: "ChatRoom"
+  });
+  ```
+</ParamField>
+
+<ParamField path="scriptName" type="string">
+  Name of the script containing the Durable Object implementation.
+
+  <Expandable title="default" defaultOpen>
+    Bound to the worker that includes this namespace in its bindings
+  </Expandable>
+</ParamField>
+
+<ParamField path="environment" type="string">
+  Environment name for the Durable Object.
+</ParamField>
+
+<ParamField path="sqlite" type="boolean">
+  Whether to enable SQLite storage for the Durable Object.
+
+  ```ts
+  const users = DurableObjectNamespace("user-store", {
+    className: "User",
+    sqlite: true
+  });
+  ```
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The ID of the Durable Object namespace.
+</ResponseField>
+
+<ResponseField name="className" type="string">
+  Name of the class that implements the Durable Object.
+</ResponseField>
+
+<ResponseField name="scriptName" type="string">
+  Name of the script containing the Durable Object implementation.
+</ResponseField>
+
+<ResponseField name="type" type="durable_object_namespace">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic Durable Object Namespace
+
+```ts
+const rooms = DurableObjectNamespace("chat-rooms", {
+  className: "ChatRoom"
+});
+
+const worker = await Worker("chat", {
+  entrypoint: "./src/chat.ts",
+  bindings: {
+    ROOMS: rooms
+  }
+});
+```
+
+### Durable Object with SQLite
+
+```ts
+const users = DurableObjectNamespace("user-store", {
+  className: "User",
+  sqlite: true
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    USERS: users
+  }
+});
+```
+
+### Cross-Script Binding
+
+```ts
+const dataWorker = await Worker("data-worker", {
+  entrypoint: "./src/data.ts",
+  bindings: {
+    STORAGE: DurableObjectNamespace("storage", {
+      className: "DataStorage"
+    })
+  }
+});
+
+const apiWorker = await Worker("api-worker", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    SHARED_STORAGE: dataWorker.bindings.STORAGE
+  }
+});
+```

@@ -1,0 +1,133 @@
+---
+title: KVNamespace
+description: API reference for Cloudflare KV Namespace resource
+---
+
+# KVNamespace
+
+A Cloudflare KV Namespace is a key-value store for storing data in your Worker applications.
+
+## Props
+
+<ParamField path="title" type="string">
+  Title of the namespace.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="values" type="KVPair[]">
+  KV pairs to store in the namespace (only used for initial setup or updates).
+
+  <Expandable title="properties">
+    <ParamField path="key" type="string" required>
+      Key name.
+    </ParamField>
+
+    <ParamField path="value" type="string | object" required>
+      Value to store (string or JSON object).
+    </ParamField>
+
+    <ParamField path="expiration" type="number">
+      Optional expiration in seconds from now.
+    </ParamField>
+
+    <ParamField path="expirationTtl" type="number">
+      Optional expiration timestamp in seconds since epoch.
+    </ParamField>
+
+    <ParamField path="metadata" type="any">
+      Optional metadata for the key.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing namespace with the same title if it exists.
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the namespace when the resource is removed from Alchemy.
+</ParamField>
+
+## Output
+
+<ResponseField name="namespaceId" type="string">
+  The ID of the namespace.
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Title of the namespace.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Time at which the namespace was created.
+</ResponseField>
+
+<ResponseField name="modifiedAt" type="number">
+  Time at which the namespace was last modified.
+</ResponseField>
+
+<ResponseField name="type" type="kv_namespace">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic KV Namespace
+
+```ts
+const users = await KVNamespace("users", {
+  title: "user-data"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    USERS: users
+  }
+});
+```
+
+### KV Namespace with Initial Values
+
+```ts
+const sessions = await KVNamespace("sessions", {
+  title: "user-sessions",
+  values: [{
+    key: "session_123",
+    value: { userId: "user_456", role: "admin" },
+    expirationTtl: 3600
+  }]
+});
+```
+
+### KV Namespace with Metadata
+
+```ts
+const assets = await KVNamespace("assets", {
+  title: "static-assets",
+  values: [{
+    key: "main.js",
+    value: "content...",
+    metadata: {
+      contentType: "application/javascript",
+      etag: "abc123"
+    }
+  }]
+});
+```
+
+### Adopt Existing Namespace
+
+```ts
+const existingNamespace = await KVNamespace("existing-ns", {
+  title: "existing-namespace",
+  adopt: true,
+  values: [{
+    key: "config",
+    value: { setting: "updated-value" }
+  }]
+});
+```

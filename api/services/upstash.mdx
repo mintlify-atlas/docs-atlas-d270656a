@@ -1,0 +1,138 @@
+---
+title: Upstash
+description: API reference for Upstash Redis resources
+---
+
+# Upstash
+
+Upstash is a serverless data platform offering Redis and Kafka services with per-request pricing.
+
+## Resources
+
+### UpstashRedis
+
+Create and manage Upstash Redis databases.
+
+<CodeGroup>
+```typescript Basic Redis
+import { UpstashRedis } from "alchemy/upstash";
+
+const redis = await UpstashRedis("my-redis", {
+  primaryRegion: "us-east-1"
+});
+```
+
+```typescript Redis with Read Replicas
+import { UpstashRedis } from "alchemy/upstash";
+
+const redis = await UpstashRedis("my-redis", {
+  name: "my-redis",
+  primaryRegion: "us-east-1",
+  readRegions: ["us-west-1", "us-west-2"]
+});
+```
+
+```typescript Redis with Budget
+import { UpstashRedis } from "alchemy/upstash";
+
+const redis = await UpstashRedis("my-redis", {
+  name: "my-redis",
+  primaryRegion: "us-east-1",
+  budget: 100,
+  eviction: true
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="primaryRegion" type="UpstashRegion" required>
+  Primary region for the database. Available regions:
+  - `us-east-1`
+  - `us-west-1`
+  - `us-west-2`
+  - `eu-west-1`
+  - `eu-central-1`
+  - `ap-southeast-1`
+  - `ap-southeast-2`
+  - `ap-northeast-1`
+  - `sa-east-1`
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  Name of the database
+</ParamField>
+
+<ParamField path="readRegions" type="UpstashRegion[]">
+  Read regions for the database
+</ParamField>
+
+<ParamField path="budget" type="number">
+  Monthly budget for the database
+</ParamField>
+
+<ParamField path="eviction" type="boolean">
+  Whether to enable eviction for the database
+</ParamField>
+
+<ParamField path="apiKey" type="Secret">
+  API key to use (overrides environment variable)
+</ParamField>
+
+<ParamField path="email" type="string">
+  Email to use (overrides environment variable)
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  ID of the database
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the database
+</ResponseField>
+
+<ResponseField name="databaseType" type="string">
+  Type of the database in terms of pricing model
+</ResponseField>
+
+<ResponseField name="region" type="'global'">
+  Region where database is hosted
+</ResponseField>
+
+<ResponseField name="port" type="number">
+  Database port for clients to connect
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Creation time of the database as Unix time
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  State of database (active or deleted)
+</ResponseField>
+
+<ResponseField name="password" type="Secret">
+  Password of the database
+</ResponseField>
+
+<ResponseField name="userEmail" type="string">
+  Email or team id of the owner of the database
+</ResponseField>
+
+<ResponseField name="endpoint" type="string">
+  Endpoint URL of the database
+</ResponseField>
+
+<ResponseField name="tls" type="boolean">
+  Whether TLS is enabled
+</ResponseField>
+
+<ResponseField name="restToken" type="Secret">
+  REST token for the database
+</ResponseField>
+
+<ResponseField name="readOnlyRestToken" type="Secret">
+  Read-only REST token for the database
+</ResponseField>

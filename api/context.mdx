@@ -1,0 +1,429 @@
+---
+title: "Context"
+description: "Type-safe context for resource lifecycle handlers in Alchemy"
+---
+
+# Context
+
+The Context type provides type-safe access to resource state, lifecycle phase, and scope utilities within resource lifecycle handlers. It is automatically provided as the `this` binding in Resource handlers.
+
+## Type Definition
+
+```typescript
+type Context<Output, Props = ResourceProps> =
+  | CreateContext<Output>
+  | UpdateContext<Output, Props>
+  | DeleteContext<Output, Props>
+```
+
+The Context type is a discriminated union based on the `phase` property:
+
+- **CreateContext**: Used when creating a new resource (`phase: "create"`)
+- **UpdateContext**: Used when updating an existing resource (`phase: "update"`)
+- **DeleteContext**: Used when deleting a resource (`phase: "delete"`)
+
+## Phase-Specific Contexts
+
+### CreateContext
+
+Used during resource creation. The `output` and `props` are undefined.
+
+```typescript
+interface CreateContext<Output> extends BaseContext<Output> {
+  phase: "create";
+  output?: undefined;
+  props?: undefined;
+}
+```
+
+### UpdateContext
+
+Used during resource updates. Provides access to previous output and props.
+
+```typescript
+interface UpdateContext<Output, Props> extends BaseContext<Output> {
+  phase: "update";
+  output: Output;  // Previous resource output
+  props: Props;    // Previous resource props
+}
+```
+
+### DeleteContext
+
+Used during resource deletion. Provides access to the resource being deleted.
+
+```typescript
+interface DeleteContext<Output, Props> extends BaseContext<Output> {
+  phase: "delete";
+  output: Output;  // Resource to delete
+  props: Props;    // Props used to create the resource
+}
+```
+
+## Properties
+
+<ResponseField name="phase" type="'create' | 'update' | 'delete'">
+  The current lifecycle phase of the resource.
+</ResponseField>
+
+<ResponseField name="output" type="Output | undefined">
+  The previous output of the resource. Only available in `update` and `delete` phases.
+</ResponseField>
+
+<ResponseField name="props" type="Props | undefined">
+  The previous props of the resource. Only available in `update` and `delete` phases.
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  The resource identifier provided when creating the resource.
+</ResponseField>
+
+<ResponseField name="fqn" type="string">
+  The fully qualified name of the resource (e.g., `"my-app/dev/my-resource"`).
+</ResponseField>
+
+<ResponseField name="scope" type="Scope">
+  The scope containing this resource. Provides access to scope properties and methods.
+</ResponseField>
+
+<ResponseField name="stage" type="string">
+  The current stage name (e.g., `"dev"`, `"prod"`).
+</ResponseField>
+
+<ResponseField name="quiet" type="boolean">
+  Whether logging is suppressed.
+</ResponseField>
+
+<ResponseField name="isReplacement" type="boolean">
+  Whether this resource is being created as a replacement for another resource.
+</ResponseField>
+
+## Methods
+
+### destroy()
+
+Terminates the resource lifecycle handler and marks the resource for deletion.
+
+```typescript
+destroy(retainChildren?: boolean): never
+```
+
+<ParamField path="retainChildren" type="boolean" default="false">
+  Whether to retain child resources when destroying this resource.
+</ParamField>
+
+**Returns:** Never returns (throws `DestroyedSignal`)
+
+**Example:**
+```typescript
+if (this.phase === "delete") {
+  if (this.output?.resourceId) {
+    await api.delete(`/resources/${this.output.resourceId}`);
+  }
+  return this.destroy();
+}
+```
+
+### replace()
+
+Signals that the resource should be replaced (deleted then recreated). Used when an immutable property changes.
+
+```typescript
+replace(force?: boolean): never
+```
+
+<ParamField path="force" type="boolean" default="false">
+  Force replacement even if not necessary.
+</ParamField>
+
+**Returns:** Never returns (throws `ReplacedSignal`)
+
+**Example:**
+```typescript
+// Check if immutable property changed
+if (this.phase === "update" && this.output.region !== props.region) {
+  return this.replace(); // Triggers delete → create
+}
+```
+
+### get()
+
+Retrieves a value from the resource's internal state storage.
+
+```typescript
+get<T>(key: string): Promise<T | undefined>
+```
+
+<ParamField path="key" type="string" required>
+  The key to retrieve.
+</ParamField>
+
+**Returns:** The stored value, or `undefined` if not found.
+
+**Example:**
+```typescript
+const metadata = await this.get<{ version: string }>("metadata");
+```
+
+### set()
+
+Stores a value in the resource's internal state storage.
+
+```typescript
+set<T>(key: string, value: T): Promise<void>
+```
+
+<ParamField path="key" type="string" required>
+  The key to store.
+</ParamField>
+
+<ParamField path="value" type="T" required>
+  The value to store.
+</ParamField>
+
+**Example:**
+```typescript
+await this.set("metadata", { version: "1.0.0", deployedAt: Date.now() });
+```
+
+### delete()
+
+Deletes a value from the resource's internal state storage.
+
+```typescript
+delete<T>(key: string): Promise<T | undefined>
+```
+
+<ParamField path="key" type="string" required>
+  The key to delete.
+</ParamField>
+
+**Returns:** The deleted value, or `undefined` if not found.
+
+**Example:**
+```typescript
+const oldValue = await this.delete("temporary-data");
+```
+
+### onCleanup()
+
+Registers a cleanup function to run when the process exits.
+
+```typescript
+onCleanup(fn: () => void | Promise<void>): void
+```
+
+<ParamField path="fn" type="function" required>
+  The cleanup function to register.
+</ParamField>
+
+**Example:**
+```typescript
+const proc = spawn('my-command', ['arg1', 'arg2']);
+this.onCleanup(async () => {
+  proc.kill();
+  await waitForExit(proc);
+});
+```
+
+### create()
+
+Creates the resource output with Alchemy-managed properties.
+
+```typescript
+create(props: Omit<Output, keyof Resource>): Output
+```
+
+<ParamField path="props" type="Omit<Output, keyof Resource>" required>
+  The resource-specific properties (excludes internal Alchemy properties).
+</ParamField>
+
+**Returns:** The complete resource output with internal properties added.
+
+**Example:**
+```typescript
+return this.create({
+  name: result.name,
+  url: result.url,
+  resourceId: result.id
+});
+```
+
+## Examples
+
+### Phase-Based Logic
+
+```typescript
+import { Resource, Context } from "alchemy";
+
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (
+    this: Context<MyResource>,
+    id: string,
+    props: MyResourceProps
+  ): Promise<MyResource> {
+    switch (this.phase) {
+      case "create":
+        // this.output is undefined
+        // this.props is undefined
+        const result = await api.create(props);
+        return { id, ...result };
+
+      case "update":
+        // this.output contains previous output
+        // this.props contains previous props
+        const updated = await api.update(this.output.resourceId, props);
+        return { id, ...updated };
+
+      case "delete":
+        // this.output contains the resource being deleted
+        await api.delete(this.output.resourceId);
+        return this.destroy();
+    }
+  }
+);
+```
+
+### Using Context Methods
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (
+    this: Context<MyResource>,
+    id: string,
+    props: MyResourceProps
+  ): Promise<MyResource> {
+    if (this.phase === "delete") {
+      await api.delete(this.output.resourceId);
+      return this.destroy();
+    }
+
+    // Store metadata in resource state
+    await this.set("lastModified", Date.now());
+    await this.set("version", props.version);
+
+    // Retrieve metadata
+    const lastModified = await this.get<number>("lastModified");
+    
+    // Register cleanup
+    const watcher = startWatcher();
+    this.onCleanup(async () => {
+      await watcher.stop();
+    });
+
+    const result = await api.createOrUpdate(props);
+    return { id, ...result };
+  }
+);
+```
+
+### Handling Immutable Properties
+
+```typescript
+export const ImmutableResource = Resource(
+  "provider::ImmutableResource",
+  async function (
+    this: Context<ImmutableResource>,
+    id: string,
+    props: ImmutableResourceProps
+  ): Promise<ImmutableResource> {
+    if (this.phase === "delete") {
+      await api.delete(this.output.resourceId);
+      return this.destroy();
+    }
+
+    // Check if immutable property changed during update
+    if (this.phase === "update") {
+      if (this.output.region !== props.region) {
+        // Signal that resource should be replaced
+        return this.replace();
+      }
+    }
+
+    const result = this.output?.resourceId
+      ? await api.update(this.output.resourceId, props)
+      : await api.create(props);
+
+    return { id, region: props.region, ...result };
+  }
+);
+```
+
+### Accessing Scope Properties
+
+```typescript
+export const ScopedResource = Resource(
+  "provider::ScopedResource",
+  async function (
+    this: Context<ScopedResource>,
+    id: string,
+    props: ScopedResourceProps
+  ): Promise<ScopedResource> {
+    // Access scope properties via this.scope
+    const name = props.name ?? this.scope.createPhysicalName(id);
+    const isLocal = this.scope.local;
+    const stage = this.stage;
+
+    if (isLocal) {
+      // Return mock data for local development
+      return {
+        id,
+        name,
+        url: `http://localhost:3000/${id}`,
+        stage
+      };
+    }
+
+    if (this.phase === "delete") {
+      await api.delete(this.output.name);
+      return this.destroy();
+    }
+
+    const result = await api.deploy({ name, stage });
+    return { id, ...result };
+  }
+);
+```
+
+### Type-Safe Phase Handling
+
+```typescript
+export const TypeSafeResource = Resource(
+  "provider::TypeSafeResource",
+  async function (
+    this: Context<TypeSafeResource>,
+    id: string,
+    props: TypeSafeResourceProps
+  ): Promise<TypeSafeResource> {
+    if (this.phase === "delete") {
+      // TypeScript knows this.output is defined
+      console.log(`Deleting ${this.output.name}`);
+      await api.delete(this.output.resourceId);
+      return this.destroy();
+    }
+
+    if (this.phase === "update") {
+      // TypeScript knows both this.output and this.props are defined
+      console.log(`Updating ${this.output.name}`);
+      console.log(`Previous version: ${this.props.version}`);
+      console.log(`New version: ${props.version}`);
+    }
+
+    if (this.phase === "create") {
+      // TypeScript knows this.output and this.props are undefined
+      console.log(`Creating new resource`);
+    }
+
+    const result = await api.createOrUpdate(props);
+    return { id, ...result };
+  }
+);
+```
+
+## Related
+
+- [Resource()](/api/resource) - Define resource providers
+- [Scope](/api/scope) - Scope API reference
+- [alchemy.secret()](/api/secret) - Secret handling

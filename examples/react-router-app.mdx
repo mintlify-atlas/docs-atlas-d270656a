@@ -1,0 +1,189 @@
+---
+title: React Router on Cloudflare
+description: Deploy a React Router v7 application to Cloudflare with bindings and secrets
+---
+
+# React Router on Cloudflare Example
+
+This example shows how to deploy a React Router v7 application to Cloudflare Workers with environment bindings and secrets.
+
+## Features
+
+- **React Router v7**: File-based routing with server rendering
+- **Cloudflare Workers**: Edge deployment
+- **Environment Bindings**: Secrets and configuration
+- **Type Safety**: Full TypeScript support
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install react-router
+```
+
+### Create alchemy.run.ts
+
+Create your infrastructure configuration:
+
+```ts
+import alchemy from "alchemy";
+import { ReactRouter } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-react-router");
+
+export const website = await ReactRouter("website", {
+  name: `${app.name}-${app.stage}-website`,
+  bindings: {
+    ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Configure React Router
+
+Create `react-router.config.ts`:
+
+```ts
+import type { Config } from "@react-router/dev/config";
+
+export default {
+  appDirectory: "app",
+  ssr: true,
+} satisfies Config;
+```
+
+### Create Routes
+
+Create `app/routes/_index.tsx`:
+
+```tsx
+import { useLoaderData } from "react-router";
+
+export async function loader({ context }: { context: any }) {
+  // Access bindings from Alchemy
+  const message = context.cloudflare.env.ALCHEMY_TEST_VALUE;
+  
+  return {
+    message,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+export default function Index() {
+  const data = useLoaderData<typeof loader>();
+  
+  return (
+    <div>
+      <h1>React Router on Cloudflare</h1>
+      <p>Message: {data.message}</p>
+      <p>Timestamp: {data.timestamp}</p>
+    </div>
+  );
+}
+```
+
+### Environment Types
+
+Create `env.d.ts` for TypeScript support:
+
+```ts
+import type { website } from "./alchemy.run";
+
+declare module "react-router" {
+  interface AppLoadContext {
+    cloudflare: {
+      env: typeof website.Env;
+    };
+  }
+}
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Environment Bindings
+
+Secrets are passed as bindings to your application:
+
+```ts
+bindings: {
+  ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+}
+```
+
+### Server-Side Rendering
+
+React Router runs on Cloudflare's edge:
+
+```tsx
+export async function loader({ context }) {
+  // Server-side code with access to Cloudflare bindings
+  const env = context.cloudflare.env;
+  return { data: env.ALCHEMY_TEST_VALUE };
+}
+```
+
+### Type Safety
+
+Full TypeScript support for environment bindings:
+
+```ts
+interface AppLoadContext {
+  cloudflare: {
+    env: typeof website.Env;
+  };
+}
+```
+
+## Advanced Usage
+
+### Add KV Storage
+
+Extend with KV Namespace:
+
+```ts
+import { KVNamespace, ReactRouter } from "alchemy/cloudflare";
+
+const kv = await KVNamespace("kv", {
+  title: `${app.name}-${app.stage}-kv`,
+});
+
+const website = await ReactRouter("website", {
+  bindings: {
+    KV: kv,
+    ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+  },
+});
+```
+
+Use in loader:
+
+```tsx
+export async function loader({ context }: { context: any }) {
+  const value = await context.cloudflare.env.KV.get("key");
+  return { value };
+}
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-react-router](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-react-router)

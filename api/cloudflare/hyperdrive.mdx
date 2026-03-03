@@ -1,0 +1,266 @@
+---
+title: Hyperdrive
+description: API reference for Cloudflare Hyperdrive resource
+---
+
+# Hyperdrive
+
+Cloudflare Hyperdrive accelerates access to existing databases with connection pooling and global caching.
+
+## Props
+
+<ParamField path="name" type="string">
+  Name of the Hyperdrive configuration.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="origin" type="HyperdriveOriginInput" required>
+  Database connection origin configuration.
+
+  Can be:
+  - Connection string (e.g., `"postgres://user:pass@host:5432/db"`)
+  - Secret containing connection string
+  - `HyperdrivePublicOrigin` object
+  - `HyperdriveOriginWithAccess` object
+
+  <Expandable title="HyperdrivePublicOrigin properties">
+    <ParamField path="database" type="string" required>
+      Database name.
+    </ParamField>
+
+    <ParamField path="host" type="string" required>
+      Database host.
+    </ParamField>
+
+    <ParamField path="password" type="string | Secret" required>
+      Database password. Use `alchemy.secret()` to securely store this value.
+    </ParamField>
+
+    <ParamField path="port" type="number">
+      Database port.
+
+      <Expandable title="default" defaultOpen>
+        5432 for postgres, 3306 for mysql
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="scheme" type="postgres | mysql" default="postgres">
+      Connection scheme.
+    </ParamField>
+
+    <ParamField path="user" type="string" required>
+      Database user.
+    </ParamField>
+  </Expandable>
+
+  <Expandable title="HyperdriveOriginWithAccess properties">
+    <ParamField path="access_client_id" type="string" required>
+      Access client ID.
+    </ParamField>
+
+    <ParamField path="access_client_secret" type="string | Secret" required>
+      Access client secret. Use `alchemy.secret()` to securely store this value.
+    </ParamField>
+
+    <ParamField path="host" type="string" required>
+      Database host.
+    </ParamField>
+
+    <ParamField path="database" type="string" required>
+      Database name.
+    </ParamField>
+
+    <ParamField path="port" type="number">
+      Database port.
+
+      <Expandable title="default" defaultOpen>
+        5432 for postgres, 3306 for mysql
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="scheme" type="postgres | mysql" default="postgres">
+      Connection scheme.
+    </ParamField>
+
+    <ParamField path="user" type="string" required>
+      Database user.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="caching" type="HyperdriveCaching">
+  Caching configuration.
+
+  <Expandable title="HyperdriveCachingEnabled properties">
+    <ParamField path="disabled" type="false" default="false">
+      Whether caching is disabled.
+    </ParamField>
+
+    <ParamField path="max_age" type="number" default="60">
+      Maximum duration items should persist in the cache (in seconds).
+    </ParamField>
+
+    <ParamField path="stale_while_revalidate" type="number" default="15">
+      Number of seconds the cache may serve a stale response (in seconds).
+    </ParamField>
+  </Expandable>
+
+  <Expandable title="HyperdriveCachingDisabled properties">
+    <ParamField path="disabled" type="true" required>
+      Whether caching is disabled.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="mtls" type="HyperdriveMtls">
+  mTLS configuration for Hyperdrive.
+
+  <Expandable title="properties">
+    <ParamField path="ca_certificate_id" type="string">
+      CA certificate ID.
+    </ParamField>
+
+    <ParamField path="mtls_certificate_id" type="string">
+      mTLS certificate ID.
+    </ParamField>
+
+    <ParamField path="sslmode" type="verify-ca | verify-full" default="verify-full">
+      SSL mode.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing hyperdrive config.
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the hyperdrive config when the resource is deleted.
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The ID of the resource.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Name of the Hyperdrive configuration.
+</ResponseField>
+
+<ResponseField name="hyperdriveId" type="string">
+  The Cloudflare-generated UUID of the hyperdrive.
+</ResponseField>
+
+<ResponseField name="origin" type="HyperdrivePublicOrigin | HyperdriveOriginWithAccess">
+  Database connection origin configuration.
+</ResponseField>
+
+<ResponseField name="type" type="hyperdrive">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### PostgreSQL Connection
+
+```ts
+const hyperdrive = await Hyperdrive("postgres-db", {
+  name: "my-postgres-db",
+  origin: {
+    database: "postgres",
+    host: "database.example.com",
+    password: alchemy.secret(process.env.DB_PASSWORD),
+    port: 5432,
+    user: "postgres"
+  }
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    DATABASE: hyperdrive
+  }
+});
+```
+
+### MySQL Connection
+
+```ts
+const hyperdrive = await Hyperdrive("mysql-db", {
+  name: "my-mysql-db",
+  origin: {
+    database: "mydb",
+    host: "mysql.example.com",
+    password: alchemy.secret(process.env.DB_PASSWORD),
+    port: 3306,
+    scheme: "mysql",
+    user: "mysql_user"
+  }
+});
+```
+
+### Connection String
+
+```ts
+const hyperdrive = await Hyperdrive("db", {
+  origin: alchemy.secret(process.env.DATABASE_URL)
+});
+```
+
+### Hyperdrive with Caching Disabled
+
+```ts
+const hyperdrive = await Hyperdrive("no-cache-db", {
+  name: "no-cache-db",
+  origin: {
+    database: "postgres",
+    host: "database.example.com",
+    password: alchemy.secret(process.env.DB_PASSWORD),
+    port: 5432,
+    user: "postgres"
+  },
+  caching: {
+    disabled: true
+  }
+});
+```
+
+### Hyperdrive with mTLS
+
+```ts
+const hyperdrive = await Hyperdrive("secure-db", {
+  name: "secure-db",
+  origin: {
+    database: "postgres",
+    host: "database.example.com",
+    password: alchemy.secret(process.env.DB_PASSWORD),
+    port: 5432,
+    user: "postgres"
+  },
+  mtls: {
+    ca_certificate_id: "00000000-0000-0000-0000-0000000000",
+    mtls_certificate_id: "00000000-0000-0000-0000-0000000000",
+    sslmode: "verify-full"
+  }
+});
+```
+
+### Hyperdrive with Access Client Credentials
+
+```ts
+const hyperdrive = await Hyperdrive("access-db", {
+  name: "access-db",
+  origin: {
+    database: "postgres",
+    host: "database.example.com",
+    access_client_id: "client-id",
+    access_client_secret: alchemy.secret(process.env.ACCESS_CLIENT_SECRET),
+    port: 5432,
+    user: "postgres"
+  }
+});
+```

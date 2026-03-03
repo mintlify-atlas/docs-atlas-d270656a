@@ -1,0 +1,113 @@
+---
+title: "esbuild"
+description: "Bundle JavaScript and TypeScript files using esbuild"
+---
+
+## Bundle
+
+Creates and manages bundled JavaScript/TypeScript files using esbuild. Supports various output formats, sourcemaps, and platform targets.
+
+### Properties
+
+<ParamField path="entryPoint" type="string" required>
+  Entry point for the bundle. Path to the source file to bundle (e.g., "src/handler.ts").
+</ParamField>
+
+<ParamField path="outdir" type="string">
+  Output directory for the bundle. Directory where the bundled file will be written.
+</ParamField>
+
+<ParamField path="outfile" type="string">
+  Output filename for the bundle. Full path to the output file, overrides outdir if specified.
+</ParamField>
+
+<ParamField path="format" type="'iife' | 'cjs' | 'esm'">
+  Bundle format:
+  - `iife`: Immediately Invoked Function Expression
+  - `cjs`: CommonJS
+  - `esm`: ECMAScript Modules
+</ParamField>
+
+<ParamField path="target" type="string | string[]">
+  Target environment. Examples: 'node16', 'node18', 'es2020'
+</ParamField>
+
+<ParamField path="minify" type="boolean">
+  Whether to minify the output.
+</ParamField>
+
+<ParamField path="sourcemap" type="boolean | 'inline' | 'external' | 'both'">
+  Whether to generate sourcemaps:
+  - `inline`: Include sourcemap in bundle
+  - `external`: Generate separate .map file
+  - `both`: Generate both inline and external
+</ParamField>
+
+<ParamField path="external" type="string[]">
+  External packages to exclude from bundle. Array of package names to mark as external.
+</ParamField>
+
+<ParamField path="platform" type="'browser' | 'node' | 'neutral'">
+  Platform to target:
+  - `browser`: Browser environment
+  - `node`: Node.js environment
+  - `neutral`: Platform-agnostic
+</ParamField>
+
+### Returns
+
+<ResponseField name="path" type="string">
+  Path to the bundled file. Absolute or relative path to the generated bundle.
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  SHA-256 hash of the bundle contents. Used for cache busting and content verification.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  The content of the bundle (the .js or .mjs file).
+</ResponseField>
+
+### Examples
+
+#### Bundle a TypeScript file for Node.js
+
+```typescript
+const bundle = await Bundle("handler", {
+  entryPoint: "src/handler.ts",
+  outdir: ".alchemy/.out",
+  format: "esm",
+  platform: "node",
+  target: "node18"
+});
+
+console.log(bundle.path); // Path to the bundled file
+console.log(bundle.hash); // SHA-256 hash of the bundle
+```
+
+#### Bundle for browser with minification
+
+```typescript
+const browserBundle = await Bundle("app", {
+  entryPoint: "src/app.ts",
+  outdir: "dist",
+  format: "iife",
+  platform: "browser",
+  target: "es2020",
+  minify: true,
+  sourcemap: "external"
+});
+```
+
+#### Bundle with external dependencies
+
+```typescript
+const bundle = await Bundle("worker", {
+  entryPoint: "src/worker.ts",
+  outdir: "dist",
+  format: "esm",
+  platform: "neutral",
+  external: ["react", "react-dom"],
+  minify: true
+});
+```

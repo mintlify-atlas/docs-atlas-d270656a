@@ -1,0 +1,133 @@
+---
+title: Queue
+description: API reference for Cloudflare Queue resource
+---
+
+# Queue
+
+Creates and manages Cloudflare Queues for reliable message delivery between workers.
+
+## Props
+
+<ParamField path="name" type="string">
+  Name of the queue.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="settings" type="QueueSettings">
+  Settings for the queue.
+
+  <Expandable title="properties">
+    <ParamField path="deliveryDelay" type="number">
+      Delay in seconds before message delivery. Queue will not deliver messages until this time has elapsed.
+    </ParamField>
+
+    <ParamField path="deliveryPaused" type="boolean">
+      Whether delivery is paused. If true, the queue will not deliver messages to consumers.
+    </ParamField>
+
+    <ParamField path="messageRetentionPeriod" type="number">
+      Period in seconds to retain messages. Messages will be automatically deleted after this time.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="dlq" type="string | Queue">
+  Dead letter queue for failed messages.
+
+  ```ts
+  const dlq = await Queue("failed-tasks");
+  const queue = await Queue("tasks", {
+    dlq: dlq
+  });
+  ```
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the queue when the resource is removed from Alchemy.
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing queue with the same name if it exists.
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The unique ID of the queue.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the queue.
+</ResponseField>
+
+<ResponseField name="createdOn" type="string">
+  Time when the queue was created.
+</ResponseField>
+
+<ResponseField name="modifiedOn" type="string">
+  Modified timestamp.
+</ResponseField>
+
+<ResponseField name="type" type="queue">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic Queue
+
+```ts
+const queue = await Queue("tasks", {
+  name: "task-queue"
+});
+```
+
+### Queue with Custom Settings
+
+```ts
+const queue = await Queue("delayed-queue", {
+  name: "delayed-queue",
+  settings: {
+    deliveryDelay: 30,
+    messageRetentionPeriod: 86400
+  }
+});
+```
+
+### Queue with Dead Letter Queue
+
+```ts
+const dlq = await Queue("dlq-queue");
+
+const mainQueue = await Queue("main-queue", {
+  dlq: dlq
+});
+```
+
+### Queue Producer and Consumer
+
+```ts
+const processingQueue = await Queue("processing-queue");
+
+const worker = await Worker("processor", {
+  entrypoint: "./src/processor.ts",
+  bindings: {
+    QUEUE: processingQueue
+  },
+  eventSources: [{
+    queue: processingQueue,
+    settings: {
+      batchSize: 25,
+      maxConcurrency: 5,
+      maxRetries: 3,
+      maxWaitTimeMs: 1500,
+      retryDelay: 45,
+      deadLetterQueue: "failed-processing"
+    }
+  }]
+});
+```

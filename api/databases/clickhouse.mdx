@@ -1,0 +1,200 @@
+---
+title: ClickHouse
+description: API reference for ClickHouse Cloud service resources
+---
+
+# ClickHouse
+
+ClickHouse is a fast open-source column-oriented database management system optimized for real-time analytics.
+
+## Resources
+
+### Service
+
+Create, manage and delete ClickHouse services.
+
+<CodeGroup>
+```typescript Basic Service
+import { OrganizationRef, Service } from "alchemy/clickhouse";
+
+const organization = await OrganizationRef("Alchemy's Organization");
+const service = await Service("clickhouse", {
+  organization,
+  provider: "aws",
+  region: "us-east-1"
+});
+```
+
+```typescript Custom Scaling
+import { Service } from "alchemy/clickhouse";
+
+const service = await Service("clickhouse", {
+  organization,
+  provider: "aws",
+  region: "us-east-1",
+  minReplicaMemoryGb: 8,
+  maxReplicaMemoryGb: 356,
+  numReplicas: 3
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="organization" type="string | Organization" required>
+  The ID, name, or OrganizationRef of ClickHouse cloud organization to create the service in
+</ParamField>
+
+<ParamField path="provider" type="string" required>
+  The underlying cloud provider to create the service on (e.g., "aws", "gcp", "azure")
+</ParamField>
+
+<ParamField path="region" type="string" required>
+  The region to create the service in
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name of the ClickHouse service to create
+</ParamField>
+
+<ParamField path="keyId" type="string | Secret">
+  The key ID for the ClickHouse API
+</ParamField>
+
+<ParamField path="secret" type="string | Secret">
+  The secret for the ClickHouse API
+</ParamField>
+
+<ParamField path="ipAccessList" type="array" default="[{ description: 'Anywhere', source: '0.0.0.0/0' }]">
+  The IP access list to create the service with
+</ParamField>
+
+<ParamField path="minReplicaMemoryGb" type="number" default="8">
+  The minimum replica memory to create the service with
+</ParamField>
+
+<ParamField path="maxReplicaMemoryGb" type="number" default="356">
+  The maximum replica memory to create the service with
+</ParamField>
+
+<ParamField path="numReplicas" type="number" default="3">
+  The number of replicas to create the service with
+</ParamField>
+
+<ParamField path="idleScaling" type="boolean" default="true">
+  Whether to enable idle scaling
+</ParamField>
+
+<ParamField path="idleTimeoutMinutes" type="number" default="15">
+  The timeout minutes for idle scaling
+</ParamField>
+
+<ParamField path="isReadonly" type="boolean" default="false">
+  Whether to make the service readonly
+</ParamField>
+
+<ParamField path="releaseChannel" type="string" default="default">
+  The release channel to create the service with
+</ParamField>
+
+<ParamField path="stateTarget" type="'start' | 'stop'" default="start">
+  The desired state of the service
+</ParamField>
+
+<ParamField path="enableMysqlEndpoint" type="boolean" default="true">
+  Whether to enable the MySQL endpoint
+</ParamField>
+
+<ParamField path="enableHttpsEndpoint" type="boolean" default="true">
+  Whether to enable the HTTPS endpoint. Cannot be disabled
+</ParamField>
+
+<ParamField path="enableNativesecureEndpoint" type="boolean" default="true">
+  Whether to enable the nativesecure endpoint. Cannot be disabled
+</ParamField>
+
+<ParamField path="waitForHttpEndpointReady" type="boolean" default="true">
+  Wait for HTTP service to be ready before marking the resource as created
+</ParamField>
+
+#### Returns
+
+<ResponseField name="organizationId" type="string">
+  The ID of ClickHouse cloud organization the service is in
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="clickhouseId" type="string">
+  The ClickHouse ID of the service
+</ResponseField>
+
+<ResponseField name="password" type="Secret">
+  The password for the ClickHouse service
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  The provider of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="region" type="string">
+  The region of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="ipAccessList" type="array">
+  The IP access list of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="minReplicaMemoryGb" type="number">
+  The minimum replica memory of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="maxReplicaMemoryGb" type="number">
+  The maximum replica memory of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="numReplicas" type="number">
+  The number of replicas of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="idleScaling" type="boolean">
+  Whether idle scaling is enabled for the ClickHouse service
+</ResponseField>
+
+<ResponseField name="idleTimeoutMinutes" type="number">
+  The timeout minutes for idle scaling of the ClickHouse service
+</ResponseField>
+
+<ResponseField name="mysqlEndpoint" type="object">
+  The MySQL endpoint details of the ClickHouse service
+  <Expandable>
+    <ResponseField name="protocol" type="'mysql'" />
+    <ResponseField name="host" type="string" />
+    <ResponseField name="port" type="number" />
+    <ResponseField name="username" type="string" />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="httpsEndpoint" type="object">
+  The HTTPS endpoint details of the ClickHouse service
+  <Expandable>
+    <ResponseField name="protocol" type="'https'" />
+    <ResponseField name="host" type="string" />
+    <ResponseField name="port" type="number" />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="nativesecureEndpoint" type="object">
+  The nativesecure endpoint details of the ClickHouse service
+  <Expandable>
+    <ResponseField name="protocol" type="'nativesecure'" />
+    <ResponseField name="host" type="string" />
+    <ResponseField name="port" type="number" />
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  The state of the ClickHouse service
+</ResponseField>

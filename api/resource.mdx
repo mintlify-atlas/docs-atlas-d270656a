@@ -1,0 +1,330 @@
+---
+title: "Resource()"
+description: "Define custom resource providers with complete lifecycle management"
+---
+
+# Resource()
+
+Defines a custom resource provider that handles the complete lifecycle (create, update, delete) of a cloud resource. Resources are the building blocks of Alchemy applications.
+
+## Signature
+
+```typescript
+function Resource<Type extends string, Handler extends ResourceLifecycleHandler>(
+  type: Type,
+  handler: Handler
+): ResourceProvider<Type, Handler>
+
+function Resource<Type extends string, Handler extends ResourceLifecycleHandler>(
+  type: Type,
+  options: Partial<ProviderOptions>,
+  handler: Handler
+): ResourceProvider<Type, Handler>
+```
+
+## Parameters
+
+<ParamField path="type" type="string" required>
+  The unique type identifier for this resource, conventionally in the format `"provider::ResourceName"` (e.g., `"cloudflare::Worker"`, `"aws::S3Bucket"`).
+</ParamField>
+
+<ParamField path="options" type="ProviderOptions">
+  Optional configuration for the resource provider.
+
+  <ParamField path="options.alwaysUpdate" type="boolean" default="false">
+    If true, the resource will be updated even if the inputs have not changed.
+  </ParamField>
+
+  <ParamField path="options.destroyStrategy" type="'sequential' | 'parallel'" default="'sequential'">
+    The strategy to use when destroying this resource and its dependencies.
+  </ParamField>
+</ParamField>
+
+<ParamField path="handler" type="ResourceLifecycleHandler" required>
+  The async function that manages the resource lifecycle. Receives a `Context` object as `this`, along with `id` and `props` parameters.
+
+  ```typescript
+  type ResourceLifecycleHandler = (
+    this: Context<Output, Props>,
+    id: string,
+    props: Props
+  ) => Promise<Output>
+  ```
+</ParamField>
+
+## Returns
+
+<ResponseField name="ResourceProvider" type="function">
+  A callable function that creates instances of the resource. When called with an `id` and `props`, it returns a Promise that resolves to the resource output.
+
+  ```typescript
+  const MyResource = Resource("provider::MyResource", handler);
+  const instance = await MyResource("my-id", { prop: "value" });
+  ```
+</ResponseField>
+
+## Context API
+
+The resource handler function receives a `Context` object as `this` with the following properties and methods:
+
+<ParamField path="this.phase" type="'create' | 'update' | 'delete'">
+  The current lifecycle phase of the resource.
+</ParamField>
+
+<ParamField path="this.output" type="Output | undefined">
+  The previous output of the resource (undefined during creation).
+</ParamField>
+
+<ParamField path="this.props" type="Props | undefined">
+  The previous props of the resource (undefined during creation).
+</ParamField>
+
+<ParamField path="this.scope" type="Scope">
+  The current scope containing this resource.
+</ParamField>
+
+<ParamField path="this.id" type="string">
+  The resource identifier.
+</ParamField>
+
+<ParamField path="this.fqn" type="string">
+  The fully qualified name of the resource.
+</ParamField>
+
+<ParamField path="this.destroy()" type="function">
+  Terminates the resource lifecycle and marks it for deletion. Used in the delete phase.
+
+  ```typescript
+  if (this.phase === "delete") {
+    await api.deleteResource(this.output.id);
+    return this.destroy();
+  }
+  ```
+</ParamField>
+
+<ParamField path="this.replace()" type="function">
+  Signals that the resource should be replaced (deleted and recreated). Used when an immutable property changes.
+
+  ```typescript
+  if (this.output.name !== props.name) {
+    return this.replace(); // Triggers delete → create
+  }
+  ```
+</ParamField>
+
+<ParamField path="this.get(key)" type="function">
+  Retrieves a value from the resource's internal state storage.
+</ParamField>
+
+<ParamField path="this.set(key, value)" type="function">
+  Stores a value in the resource's internal state storage.
+</ParamField>
+
+<ParamField path="this.onCleanup(fn)" type="function">
+  Registers a cleanup function to run when the process exits.
+
+  ```typescript
+  const proc = spawn('my-command');
+  this.onCleanup(async () => {
+    proc.kill();
+    await waitForExit(proc);
+  });
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Resource Provider
+
+```typescript
+import { Resource, Context } from "alchemy";
+
+export interface MyResourceProps {
+  name?: string;
+  region: string;
+}
+
+export interface MyResource {
+  id: string;
+  name: string;
+  region: string;
+  resourceId: string;
+}
+
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (
+    this: Context<MyResource>,
+    id: string,
+    props: MyResourceProps
+  ): Promise<MyResource> {
+    const name = props.name ?? this.scope.createPhysicalName(id);
+
+    if (this.phase === "delete") {
+      if (this.output?.resourceId) {
+        await api.delete(`/resources/${this.output.resourceId}`);
+      }
+      return this.destroy();
+    }
+
+    // Create or update the resource
+    const result = this.output?.resourceId
+      ? await api.put(`/resources/${this.output.resourceId}`, { name, region: props.region })
+      : await api.post("/resources", { name, region: props.region });
+
+    return {
+      id,
+      name: result.name,
+      region: props.region,
+      resourceId: result.id
+    };
+  }
+);
+```
+
+### Resource with Secret Handling
+
+```typescript
+import { Resource, Context, Secret } from "alchemy";
+
+export interface DatabaseProps {
+  name?: string;
+  password: string | Secret;
+}
+
+export interface Database {
+  id: string;
+  name: string;
+  connectionString: string;
+  password: Secret;
+}
+
+export const Database = Resource(
+  "provider::Database",
+  async function (
+    this: Context<Database>,
+    id: string,
+    props: DatabaseProps
+  ): Promise<Database> {
+    const name = props.name ?? this.scope.createPhysicalName(id);
+
+    if (this.phase === "delete") {
+      if (this.output?.name) {
+        await api.deleteDatabase(this.output.name);
+      }
+      return this.destroy();
+    }
+
+    // Unwrap secret for API call
+    const result = await api.createOrUpdateDatabase({
+      name,
+      password: Secret.unwrap(props.password)
+    });
+
+    // Wrap secret in output
+    return {
+      id,
+      name: result.name,
+      connectionString: result.connectionString,
+      password: Secret.wrap(props.password)
+    };
+  }
+);
+
+// Usage
+const db = await Database("my-db", {
+  password: alchemy.secret(process.env.DB_PASSWORD)
+});
+```
+
+### Resource with Adoption
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (
+    this: Context<MyResource>,
+    id: string,
+    props: MyResourceProps & { adopt?: boolean }
+  ): Promise<MyResource> {
+    const name = props.name ?? this.scope.createPhysicalName(id);
+    const adopt = props.adopt ?? this.scope.adopt;
+
+    if (this.phase === "delete") {
+      if (this.output?.resourceId) {
+        await api.delete(`/resources/${this.output.resourceId}`);
+      }
+      return this.destroy();
+    }
+
+    let result;
+    if (this.output?.resourceId) {
+      // Update existing resource
+      result = await api.put(`/resources/${this.output.resourceId}`, { name });
+    } else {
+      try {
+        // Try to create new resource
+        result = await api.post("/resources", { name });
+      } catch (error) {
+        if (error.code === "ALREADY_EXISTS" && adopt) {
+          // Adopt existing resource
+          const existing = await api.findByName(name);
+          result = await api.put(`/resources/${existing.id}`, { name });
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    return {
+      id,
+      name: result.name,
+      resourceId: result.id
+    };
+  }
+);
+```
+
+### Resource with Immutable Properties
+
+```typescript
+export const ImmutableResource = Resource(
+  "provider::ImmutableResource",
+  async function (
+    this: Context<ImmutableResource>,
+    id: string,
+    props: ImmutableResourceProps
+  ): Promise<ImmutableResource> {
+    const name = props.name ?? this.scope.createPhysicalName(id);
+
+    if (this.phase === "delete") {
+      if (this.output?.resourceId) {
+        await api.delete(`/resources/${this.output.resourceId}`);
+      }
+      return this.destroy();
+    }
+
+    // Check if immutable property changed
+    if (this.phase === "update" && this.output.region !== props.region) {
+      return this.replace(); // Triggers delete → create
+    }
+
+    const result = this.output?.resourceId
+      ? await api.put(`/resources/${this.output.resourceId}`, { name })
+      : await api.post("/resources", { name, region: props.region });
+
+    return {
+      id,
+      name: result.name,
+      region: props.region,
+      resourceId: result.id
+    };
+  }
+);
+```
+
+## Related
+
+- [Context](/api/context) - Context API reference
+- [alchemy.secret()](/api/secret) - Secret handling
+- [Scope](/api/scope) - Scope API reference

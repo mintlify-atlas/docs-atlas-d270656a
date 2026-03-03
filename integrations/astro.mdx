@@ -1,0 +1,154 @@
+---
+title: Astro
+description: Deploy Astro applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [Astro](https://astro.build/) applications to Cloudflare Workers with automatic adapter configuration.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy astro @astrojs/cloudflare
+```
+
+## Configuration
+
+<Steps>
+
+### Configure Astro Adapter
+
+Add the Alchemy adapter to your `astro.config.mjs`:
+
+```js
+import alchemy from "alchemy/cloudflare/astro";
+import { defineConfig } from "astro/config";
+
+export default defineConfig({
+  output: "server",
+  adapter: alchemy(),
+});
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { Astro, D1Database } from "alchemy/cloudflare";
+
+const app = await alchemy("my-astro-app");
+
+const db = await D1Database("database", {
+  name: `${app.name}-${app.stage}-db`,
+});
+
+const website = await Astro("website", {
+  bindings: {
+    DB: db,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`output`** (optional): Astro output mode
+  - `"server"` - Server-side rendering (default if adapter is used)
+  - `"static"` - Static site generation
+  - Auto-detected from `astro.config.mjs`
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`build`**: Build command override
+  - Default: `astro build`
+- **`dev`**: Dev command override
+  - Default: `astro dev`
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `dist/_worker.js/index.js` (server mode)
+- **`assets`**: Static assets directory
+  - Default: `dist`
+
+## Static vs Server Mode
+
+### Static Site
+
+For static sites, set `output: "static"` in your Astro config:
+
+```js
+import { defineConfig } from "astro/config";
+
+export default defineConfig({
+  output: "static",
+});
+```
+
+```ts
+const website = await Astro("website", {
+  output: "static",
+});
+```
+
+### Server-Side Rendering
+
+For SSR, set `output: "server"` and use the adapter:
+
+```js
+import alchemy from "alchemy/cloudflare/astro";
+import { defineConfig } from "astro/config";
+
+export default defineConfig({
+  output: "server",
+  adapter: alchemy(),
+});
+```
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your Astro pages:
+
+```astro
+---
+const db = Astro.locals.runtime.env.DB;
+const result = await db.prepare("SELECT * FROM users").all();
+---
+
+<h1>Users: {result.results.length}</h1>
+```
+
+## Local Development
+
+The Alchemy adapter automatically:
+
+- Configures platform proxy for local bindings
+- Ignores `.alchemy` directory from file watching
+- Provides development environment access
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage

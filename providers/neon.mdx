@@ -1,0 +1,132 @@
+---
+title: Neon provider
+description: Deploy serverless Postgres databases with branching and autoscaling
+---
+
+The Neon provider enables you to create and manage serverless Postgres databases with Git-like branching, autoscaling, and instant provisioning.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Get your Neon API key from the [Neon console](https://console.neon.tech/app/settings/api-keys) and set it as an environment variable:
+
+```bash
+export NEON_API_KEY="your-api-key"
+```
+
+## Available resources
+
+- **Database** - Serverless Postgres database
+- **Branch** - Git-like database branch
+- **Endpoint** - Compute endpoint for a database
+
+## Example usage
+
+```typescript
+import alchemy from "alchemy";
+import { Database, Branch } from "alchemy/neon";
+
+const app = await alchemy("neon-app");
+
+// Create a Neon database
+const database = await Database("db", {
+  name: "my-database",
+  region: "aws-us-east-1",
+});
+
+// Create a branch for development
+const devBranch = await Branch("dev", {
+  database,
+  name: "development",
+});
+
+console.log(`Database URL: ${database.connectionString}`);
+console.log(`Dev Branch URL: ${devBranch.connectionString}`);
+
+await app.finalize();
+```
+
+## Use with Cloudflare Hyperdrive
+
+Neon works great with Cloudflare Hyperdrive for connection pooling:
+
+```typescript
+import { Database } from "alchemy/neon";
+import { Hyperdrive, Worker } from "alchemy/cloudflare";
+
+const database = await Database("db", {
+  name: "my-database",
+  password: alchemy.secret.env.DB_PASSWORD,
+});
+
+const hyperdrive = await Hyperdrive("hyperdrive", {
+  name: "my-hyperdrive",
+  origin: {
+    database: "neondb",
+    host: database.host,
+    port: 5432,
+    scheme: "postgres",
+    user: database.user,
+    password: database.password,
+  },
+  caching: {
+    disabled: false,
+  },
+});
+
+const worker = await Worker("worker", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    HYPERDRIVE: hyperdrive,
+  },
+});
+```
+
+## Database branching
+
+Neon's branching feature allows you to create instant copies of your database:
+
+```typescript
+// Production database
+const prod = await Database("prod-db", {
+  name: "production",
+});
+
+// Create a branch for each environment
+const staging = await Branch("staging", {
+  database: prod,
+  name: "staging",
+});
+
+const preview = await Branch("preview", {
+  database: prod,
+  name: `preview-${app.stage}`,
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Neon API" icon="database" href="/api/databases/neon">
+    Complete API reference
+  </Card>
+  <Card title="Hyperdrive" icon="bolt" href="/api/cloudflare/hyperdrive">
+    Connection pooling
+  </Card>
+</CardGroup>

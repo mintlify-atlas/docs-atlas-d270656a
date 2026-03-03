@@ -1,0 +1,346 @@
+---
+title: "File System"
+description: "Manage files, folders, and file collections"
+---
+
+## File
+
+Creates and manages files in the filesystem with automatic directory creation and proper cleanup on deletion.
+
+### Properties
+
+<ParamField path="path" type="string" required>
+  Path to the file (relative or absolute).
+</ParamField>
+
+<ParamField path="content" type="string" required>
+  Content to write to the file.
+</ParamField>
+
+### Returns
+
+<ResponseField name="path" type="string">
+  Path to the created file.
+</ResponseField>
+
+<ResponseField name="content" type="string">
+  Content of the file.
+</ResponseField>
+
+### Examples
+
+#### Create a simple text file
+
+```typescript
+const config = await File("config.txt", {
+  path: "config.txt",
+  content: "some configuration data"
+});
+
+console.log(config.path); // "config.txt"
+```
+
+#### Create a file in a nested directory
+
+```typescript
+const log = await File("logs/app.log", {
+  path: "logs/app.log",
+  content: "application log entry"
+});
+
+// Directory "logs" is created automatically
+```
+
+#### Update file content and path
+
+```typescript
+let file = await File("config.json", {
+  path: "config.json",
+  content: JSON.stringify({ version: "1.0.0" })
+});
+
+// Later, update the path and content (old file will be removed)
+file = await File("config.json", {
+  path: "config/config.json",
+  content: JSON.stringify({ version: "1.0.1" })
+});
+```
+
+---
+
+## Folder
+
+Creates and manages directories in the filesystem with automatic parent directory creation and cleanup on deletion.
+
+### Properties
+
+<ParamField path="path" type="string">
+  Path to the folder. If not provided, uses the resource ID.
+</ParamField>
+
+<ParamField path="delete" type="boolean">
+  Whether to delete the folder during the delete phase.
+  
+  **Default:** `true`
+</ParamField>
+
+<ParamField path="clean" type="boolean">
+  Whether to clean the folder during deletion (even if it contains existing files).
+  
+  **Default:** `false`
+</ParamField>
+
+<ParamField path="recursive" type="boolean">
+  Whether to create the folder recursively (including parent directories).
+  
+  **Default:** `true`
+</ParamField>
+
+### Returns
+
+<ResponseField name="path" type="string">
+  Path to the created folder.
+</ResponseField>
+
+### Examples
+
+#### Create a directory using id as path
+
+```typescript
+const dir = await Folder("uploads");
+
+console.log(dir.path); // "uploads"
+```
+
+#### Create a directory with explicit path
+
+```typescript
+const dir = await Folder("uploads", {
+  path: "uploads"
+});
+```
+
+#### Create a nested directory structure
+
+```typescript
+const logs = await Folder("var/log/app", {
+  path: "var/log/app",
+  recursive: true  // Creates var/, var/log/, and var/log/app/
+});
+```
+
+#### Persist folder on deletion
+
+```typescript
+const cache = await Folder("cache", {
+  path: ".cache",
+  delete: false  // Folder won't be deleted when resource is destroyed
+});
+```
+
+---
+
+## CopyFile
+
+Copies a file from a source location to a destination location.
+
+### Properties
+
+<ParamField path="src" type="string" required>
+  Source path of the file to copy.
+</ParamField>
+
+<ParamField path="dest" type="string" required>
+  Destination path where the file should be copied to.
+</ParamField>
+
+<ParamField path="overwrite" type="boolean">
+  Whether to overwrite the destination file if it already exists.
+  
+  **Default:** `true`
+</ParamField>
+
+### Returns
+
+<ResponseField name="src" type="string">
+  Source path of the file.
+</ResponseField>
+
+<ResponseField name="dest" type="string">
+  Destination path of the file.
+</ResponseField>
+
+<ResponseField name="copied" type="boolean">
+  Whether the file was successfully copied.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Timestamp when the copy operation completed.
+</ResponseField>
+
+### Examples
+
+#### Copy a file to a new location
+
+```typescript
+const copiedFile = await CopyFile("config-copy", {
+  src: "config.json",
+  dest: "backup/config.json"
+});
+
+console.log(copiedFile.copied); // true
+```
+
+#### Copy without overwriting
+
+```typescript
+const safeCopy = await CopyFile("safe-copy", {
+  src: "data.json",
+  dest: "backup/data.json",
+  overwrite: false  // Won't overwrite if destination exists
+});
+```
+
+---
+
+## File References
+
+Alchemy provides utilities for working with file references and collections, useful for documentation generation and template processing.
+
+### alchemy.file()
+
+Creates a reference to a file in the filesystem. Used in template string interpolation to include file contents.
+
+```typescript
+const fileRef = await alchemy.file("./README.md");
+
+console.log(fileRef);
+// {
+//   kind: "fs::FileRef",
+//   path: "./README.md"
+// }
+```
+
+#### Example: Include in documentation generation
+
+```typescript
+import { Document } from "alchemy/ai";
+
+await Document("api-docs", {
+  prompt: await alchemy`
+    Generate docs using the contents of:
+    ${alchemy.file("./README.md")}
+  `
+});
+```
+
+### alchemy.files()
+
+Creates a collection of files with their contents. Used in template string interpolation to include multiple file contents.
+
+```typescript
+const fileCollection = await alchemy.files([
+  "src/types.ts",
+  "src/resource.ts",
+  "src/provider.ts"
+]);
+
+console.log(fileCollection);
+// {
+//   type: "fs::FileCollection",
+//   files: {
+//     "src/types.ts": "...content...",
+//     "src/resource.ts": "...content...",
+//     "src/provider.ts": "...content..."
+//   }
+// }
+```
+
+#### Variadic syntax
+
+```typescript
+const files = await alchemy.files(
+  "src/types.ts",
+  "src/resource.ts",
+  "src/provider.ts"
+);
+```
+
+#### Example: Bulk documentation generation
+
+```typescript
+import { Document } from "alchemy/ai";
+
+await Document("provider-docs", {
+  prompt: await alchemy`
+    Generate comprehensive docs for these files:
+    ${alchemy.files([
+      "src/types.ts",
+      "src/resource.ts",
+      "src/provider.ts"
+    ])}
+  `
+});
+```
+
+### alchemy.folder()
+
+Gets all files in a directory and returns them as a FileCollection.
+
+```typescript
+const files = await alchemy.folder("./docs", {
+  recursive: true  // Include all subdirectories
+});
+
+console.log(files.files);
+// {
+//   "docs/guide.md": "...content...",
+//   "docs/api/index.md": "...content...",
+//   ...
+// }
+```
+
+#### Example: Process all documentation files
+
+```typescript
+const docsFiles = await alchemy.folder("./docs", {
+  recursive: true
+});
+
+// All file contents are available in docsFiles.files
+for (const [path, content] of Object.entries(docsFiles.files)) {
+  console.log(`${path}: ${content.length} bytes`);
+}
+```
+
+---
+
+## Type Guards
+
+### isFileRef()
+
+Type guard to check if a value is a FileRef.
+
+```typescript
+import { isFileRef } from "alchemy/fs";
+
+const value = await alchemy.file("./README.md");
+
+if (isFileRef(value)) {
+  console.log(value.path); // TypeScript knows this is a FileRef
+}
+```
+
+### isFileCollection()
+
+Type guard to check if a value is a FileCollection.
+
+```typescript
+import { isFileCollection } from "alchemy/fs";
+
+const value = await alchemy.files(["file1.ts", "file2.ts"]);
+
+if (isFileCollection(value)) {
+  console.log(Object.keys(value.files)); // TypeScript knows this is a FileCollection
+}
+```

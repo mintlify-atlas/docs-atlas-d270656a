@@ -1,0 +1,119 @@
+---
+title: Bucket
+description: AWS S3 Bucket resource for scalable object storage
+---
+
+# Bucket
+
+Creates and manages Amazon S3 buckets with support for versioning, tags, and regional configuration. S3 buckets provide scalable object storage for any type of data, with features like versioning, lifecycle policies, and fine-grained access control.
+
+## Props
+
+<ParamField path="bucketName" type="string">
+  The name of the bucket. Must be globally unique across all AWS accounts. Should be lowercase alphanumeric characters or hyphens.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Optional tags to apply to the bucket for organization and cost tracking. Each tag is a key-value pair.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  The ARN (Amazon Resource Name) of the bucket.
+  
+  **Format:** `arn:aws:s3:::bucket-name`
+</ResponseField>
+
+<ResponseField name="bucketName" type="string">
+  Name of the Bucket.
+</ResponseField>
+
+<ResponseField name="bucketDomainName" type="string">
+  The global domain name for the bucket.
+  
+  **Format:** `bucket-name.s3.amazonaws.com`
+</ResponseField>
+
+<ResponseField name="bucketRegionalDomainName" type="string">
+  The regional domain name for the bucket.
+  
+  **Format:** `bucket-name.s3.region.amazonaws.com`
+</ResponseField>
+
+<ResponseField name="hostedZoneId" type="string">
+  The S3 hosted zone ID for the region where the bucket resides. Used for DNS configuration with Route 53.
+</ResponseField>
+
+<ResponseField name="region" type="string">
+  The AWS region where the bucket is located.
+</ResponseField>
+
+<ResponseField name="websiteEndpoint" type="string">
+  The website endpoint URL if static website hosting is enabled.
+  
+  **Format:** `http://bucket-name.s3-website-region.amazonaws.com`
+</ResponseField>
+
+<ResponseField name="websiteDomain" type="string">
+  The website domain if static website hosting is enabled.
+  
+  **Format:** `bucket-name.s3-website-region.amazonaws.com`
+</ResponseField>
+
+<ResponseField name="versioningEnabled" type="boolean">
+  Whether versioning is enabled for the bucket.
+</ResponseField>
+
+<ResponseField name="acl" type="string">
+  The canned ACL applied to the bucket.
+  
+  **Common values:** private, public-read, public-read-write, authenticated-read
+</ResponseField>
+
+## Examples
+
+### Basic S3 bucket with default settings
+
+```typescript
+import { Bucket } from "alchemy/aws";
+
+const basicBucket = await Bucket("my-app-storage", {
+  bucketName: "my-app-storage",
+  tags: {
+    Environment: "production",
+    Project: "my-app"
+  }
+});
+```
+
+### Bucket with versioning enabled and specific tags
+
+```typescript
+import { Bucket } from "alchemy/aws";
+
+const versionedBucket = await Bucket("document-archive", {
+  bucketName: "document-archive",
+  tags: {
+    Environment: "production",
+    Purpose: "document-storage",
+    Versioning: "enabled"
+  }
+});
+```
+
+### Development bucket with minimal configuration
+
+```typescript
+import { Bucket } from "alchemy/aws";
+
+const devBucket = await Bucket("dev-testing", {
+  bucketName: "dev-testing",
+  tags: {
+    Environment: "development",
+    Temporary: "true"
+  }
+});
+```

@@ -1,0 +1,209 @@
+---
+title: AiSearch
+description: API reference for Cloudflare AI Search resource
+---
+
+# AiSearch
+
+Cloudflare AI Search provides RAG (Retrieval-Augmented Generation) capabilities for building AI-powered search and chat applications.
+
+## Props
+
+<ParamField path="name" type="string">
+  Name of the AI Search instance.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}` (max 32 characters)
+  </Expandable>
+</ParamField>
+
+<ParamField path="source" type="R2Bucket | AiSearchR2Source | AiSearchWebCrawlerSource" required>
+  Data source for indexing.
+
+  <Expandable title="AiSearchR2Source properties">
+    <ParamField path="type" type="r2" required>
+      Source type.
+    </ParamField>
+
+    <ParamField path="bucket" type="string | R2Bucket" required>
+      R2 bucket - can be bucket name string or R2Bucket resource.
+    </ParamField>
+
+    <ParamField path="jurisdiction" type="default | eu | fedramp" default="default">
+      Jurisdiction for the R2 bucket.
+    </ParamField>
+
+    <ParamField path="prefix" type="string">
+      Prefix for included items from the R2 bucket.
+    </ParamField>
+
+    <ParamField path="includePaths" type="string[]">
+      Path patterns to include (up to 10 patterns). Supports wildcards: `*` matches any characters except `/`, `**` matches any characters including `/`.
+    </ParamField>
+
+    <ParamField path="excludePaths" type="string[]">
+      Path patterns to exclude (up to 10 patterns). Supports wildcards: `*` matches any characters except `/`, `**` matches any characters including `/`.
+    </ParamField>
+  </Expandable>
+
+  <Expandable title="AiSearchWebCrawlerSource properties">
+    <ParamField path="type" type="web-crawler" required>
+      Source type.
+    </ParamField>
+
+    <ParamField path="domain" type="string" required>
+      Domain to crawl. Must be onboarded to your Cloudflare account.
+
+      Example: `"docs.example.com"` or `"https://docs.example.com"` (protocol will be stripped)
+    </ParamField>
+
+    <ParamField path="includePaths" type="string[]">
+      Path patterns to include (up to 10 patterns).
+    </ParamField>
+
+    <ParamField path="excludePaths" type="string[]">
+      Path patterns to exclude (up to 10 patterns).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="aiSearchModel" type="AiSearch.Model" default="@cf/meta/llama-3.3-70b-instruct-fp8-fast">
+  Text generation model for AI responses.
+</ParamField>
+
+<ParamField path="embeddingModel" type="AiSearch.EmbeddingModel" default="@cf/baai/bge-m3">
+  Embedding model for vectorization.
+</ParamField>
+
+<ParamField path="chunk" type="boolean" default="true">
+  Enable chunking of source documents.
+</ParamField>
+
+<ParamField path="chunkSize" type="number" default="256">
+  Size of each chunk (minimum 64).
+</ParamField>
+
+<ParamField path="chunkOverlap" type="number" default="10">
+  Overlap between chunks (0-30).
+</ParamField>
+
+<ParamField path="maxNumResults" type="number" default="10">
+  Maximum search results (1-50).
+</ParamField>
+
+<ParamField path="scoreThreshold" type="number" default="0.4">
+  Minimum match score (0-1).
+</ParamField>
+
+<ParamField path="reranking" type="boolean" default="false">
+  Enable result reranking.
+</ParamField>
+
+<ParamField path="rerankingModel" type="AiSearch.RerankingModel" default="@cf/baai/bge-reranker-base">
+  Reranking model.
+</ParamField>
+
+<ParamField path="rewriteQuery" type="boolean" default="false">
+  Enable query rewriting for better retrieval.
+</ParamField>
+
+<ParamField path="cache" type="boolean" default="false">
+  Enable similarity caching.
+</ParamField>
+
+<ParamField path="indexOnCreate" type="boolean" default="true">
+  Whether to index the source documents when the AI Search instance is created.
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the AI Search instance when removed from Alchemy.
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt the AI Search instance if it already exists.
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The unique ID of the AI Search instance.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the AI Search instance.
+</ResponseField>
+
+<ResponseField name="source" type="string">
+  Source bucket or domain name.
+</ResponseField>
+
+<ResponseField name="type" type="r2 | web-crawler">
+  The source type.
+</ResponseField>
+
+<ResponseField name="vectorizeName" type="string">
+  The name of the underlying Vectorize index.
+</ResponseField>
+
+## Examples
+
+### Basic AI Search with R2
+
+```ts
+const bucket = await R2Bucket("docs", { dev: { remote: true } });
+
+const aiSearch = await AiSearch("rag", {
+  source: bucket
+});
+
+const worker = await Worker("search", {
+  entrypoint: "./src/search.ts",
+  bindings: {
+    AI_SEARCH: aiSearch
+  }
+});
+```
+
+### AI Search with R2 Source Config
+
+```ts
+const aiSearch = await AiSearch("docs-search", {
+  source: {
+    type: "r2",
+    bucket: "my-docs-bucket",
+    includePaths: ["docs/**"],
+    excludePaths: ["**/*.png", "**/*.jpg"]
+  }
+});
+```
+
+### AI Search with Web Crawler
+
+```ts
+const aiSearch = await AiSearch("site-search", {
+  source: {
+    type: "web-crawler",
+    domain: "docs.example.com",
+    includePaths: ["/guides/**", "/api/**"],
+    excludePaths: ["/blog/**"]
+  }
+});
+```
+
+### Advanced AI Search Configuration
+
+```ts
+const aiSearch = await AiSearch("advanced-search", {
+  source: bucket,
+  aiSearchModel: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  embeddingModel: "@cf/baai/bge-m3",
+  chunk: true,
+  chunkSize: 512,
+  chunkOverlap: 20,
+  maxNumResults: 20,
+  scoreThreshold: 0.5,
+  reranking: true,
+  rewriteQuery: true,
+  cache: true
+});
+```

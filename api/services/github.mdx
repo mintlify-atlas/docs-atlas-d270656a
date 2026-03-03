@@ -1,0 +1,113 @@
+---
+title: GitHub
+description: API reference for GitHub resources
+---
+
+# GitHub
+
+Manage GitHub repository secrets, webhooks, environments, and more.
+
+## Resources
+
+### GitHubSecret
+
+Resource for managing GitHub repository and environment secrets.
+
+<CodeGroup>
+```typescript Repository Secret
+import { GitHubSecret } from "alchemy/github";
+
+const secret = await GitHubSecret("my-secret", {
+  owner: "my-github-username",
+  repository: "my-repo",
+  name: "API_KEY",
+  value: alchemy.secret("my-secret-value")
+});
+```
+
+```typescript Environment Secret
+import { GitHubSecret } from "alchemy/github";
+
+const secret = await GitHubSecret("my-env-secret", {
+  owner: "my-github-username",
+  repository: "my-repo",
+  environment: "production",
+  name: "DEPLOY_KEY",
+  value: alchemy.secret("my-secret-deploy-key")
+});
+```
+
+```typescript Custom Token
+import { GitHubSecret } from "alchemy/github";
+
+const secret = await GitHubSecret("my-secret", {
+  owner: "my-github-username",
+  repository: "my-repo",
+  name: "API_KEY",
+  value: alchemy.secret("my-secret-value"),
+  token: alchemy.secret.env.CUSTOM_GITHUB_TOKEN
+});
+```
+</CodeGroup>
+
+#### Authentication
+
+Authentication is handled in the following order:
+1. `token` parameter in the resource props (if provided)
+2. `GITHUB_TOKEN` environment variable
+
+The token must have the following permissions:
+- 'repo' scope for private repositories
+- 'public_repo' scope for public repositories
+
+#### Props
+
+<ParamField path="owner" type="string" required>
+  Repository owner (user or organization)
+</ParamField>
+
+<ParamField path="repository" type="string" required>
+  Repository name
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Secret name
+</ParamField>
+
+<ParamField path="value" type="Secret" required>
+  Secret value (will be stored securely on GitHub)
+</ParamField>
+
+<ParamField path="environment" type="string">
+  Optional environment name to create an environment secret. If set, the secret will be created in the specified environment instead of at the repository level.
+</ParamField>
+
+<ParamField path="token" type="Secret">
+  Optional GitHub API token (overrides environment variable). If not provided, will use GITHUB_TOKEN environment variable. Token must have 'repo' scope for private repositories or 'public_repo' scope for public repositories.
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The ID of the resource
+</ResponseField>
+
+<ResponseField name="owner" type="string">
+  Repository owner
+</ResponseField>
+
+<ResponseField name="repository" type="string">
+  Repository name
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Secret name
+</ResponseField>
+
+<ResponseField name="environment" type="string">
+  Environment name (if this is an environment secret)
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  Time at which the object was created/updated
+</ResponseField>

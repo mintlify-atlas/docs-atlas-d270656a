@@ -1,0 +1,127 @@
+---
+title: Queue
+description: AWS SQS Queue resource for message queuing
+---
+
+# Queue
+
+Creates and manages Amazon SQS queues with support for both standard and FIFO queues. Handles queue creation, attribute configuration, and automatic cleanup of deleted queues.
+
+## Props
+
+<ParamField path="queueName" type="string">
+  Name of the queue. For FIFO queues, the name must end with the .fifo suffix.
+  
+  **Default:** `${app}-${stage}-${id}` (with `.fifo` suffix if `fifo` is true)
+</ParamField>
+
+<ParamField path="fifo" type="boolean">
+  Whether this is a FIFO queue. If true, the queueName must end with .fifo suffix.
+</ParamField>
+
+<ParamField path="visibilityTimeout" type="number">
+  The length of time (in seconds) that a message received from a queue will be invisible to other receiving components.
+  
+  **Default:** `30`
+</ParamField>
+
+<ParamField path="messageRetentionPeriod" type="number">
+  The length of time (in seconds) for which Amazon SQS retains a message.
+  
+  **Default:** `345600` (4 days)
+</ParamField>
+
+<ParamField path="maximumMessageSize" type="number">
+  The limit of how many bytes a message can contain before Amazon SQS rejects it.
+  
+  **Default:** `262144` (256 KB)
+</ParamField>
+
+<ParamField path="delaySeconds" type="number">
+  The time in seconds that the delivery of all messages in the queue will be delayed.
+  
+  **Default:** `0`
+</ParamField>
+
+<ParamField path="receiveMessageWaitTimeSeconds" type="number">
+  The length of time (in seconds) for which a ReceiveMessage action waits for a message to arrive.
+  
+  **Default:** `0`
+</ParamField>
+
+<ParamField path="contentBasedDeduplication" type="boolean">
+  Enables content-based deduplication for FIFO queues. Only applicable when fifo is true.
+</ParamField>
+
+<ParamField path="deduplicationScope" type="'messageGroup' | 'queue'">
+  Specifies whether message deduplication occurs at the message group or queue level. Only applicable when fifo is true.
+</ParamField>
+
+<ParamField path="fifoThroughputLimit" type="'perQueue' | 'perMessageGroupId'">
+  Specifies whether the FIFO queue throughput quota applies to the entire queue or per message group. Only applicable when fifo is true.
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Resource tags for the queue.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  ARN of the queue.
+</ResponseField>
+
+<ResponseField name="queueName" type="string">
+  Name of the Queue.
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  URL of the queue.
+</ResponseField>
+
+## Examples
+
+### Standard queue with custom visibility timeout
+
+```typescript
+import { Queue } from "alchemy/aws";
+
+const standardQueue = await Queue("my-queue", {
+  queueName: "my-queue",
+  visibilityTimeout: 30,
+  tags: {
+    Environment: "production"
+  }
+});
+```
+
+### FIFO queue with content-based deduplication
+
+```typescript
+import { Queue } from "alchemy/aws";
+
+const fifoQueue = await Queue("orders-queue", {
+  queueName: "orders-queue.fifo",
+  fifo: true,
+  contentBasedDeduplication: true,
+  visibilityTimeout: 30,
+  tags: {
+    Environment: "production"
+  }
+});
+```
+
+### Queue with custom message retention and size
+
+```typescript
+import { Queue } from "alchemy/aws";
+
+const customQueue = await Queue("large-messages", {
+  queueName: "large-messages",
+  messageRetentionPeriod: 345600,  // 4 days
+  maximumMessageSize: 262144,      // 256 KB
+  visibilityTimeout: 60,
+  delaySeconds: 5,
+  receiveMessageWaitTimeSeconds: 20
+});
+```

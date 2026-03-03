@@ -1,0 +1,464 @@
+---
+title: Local Development
+description: Develop and test Alchemy resources locally before deploying to production
+---
+
+# Local Development
+
+Alchemy supports **local development mode** where resources can be simulated locally using tools like Miniflare for Cloudflare Workers. This allows you to iterate quickly without deploying to production.
+
+## Enabling Local Mode
+
+Run your Alchemy script with the `--local` or `--dev` flag:
+
+```bash
+bun ./alchemy.run.ts --local
+```
+
+Or enable it programmatically:
+
+```typescript
+const app = await alchemy("my-app", {
+  local: true
+});
+```
+
+<Note>
+Local development mode is in beta. Report any issues to [GitHub Issues](https://github.com/alchemy-run/alchemy/issues).
+</Note>
+
+## How Local Mode Works
+
+When `local: true` is set, Alchemy:
+
+1. **Skips cloud provider API calls** for supported resources
+2. **Starts local simulators** (like Miniflare for Cloudflare Workers)
+3. **Returns mock data** for resources that don't support local development
+4. **Binds local resources together** so they can interact
+
+## Supported Resources
+
+### Cloudflare Workers
+
+Workers run locally using [Miniflare](https://miniflare.dev/):
+
+```typescript
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("my-app", {
+  local: true
+});
+
+const worker = await Worker("api", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+console.log(worker.url);  // http://localhost:8787
+
+await app.finalize();
+```
+
+### Cloudflare D1 Database
+
+D1 databases use local SQLite:
+
+```typescript
+import { Worker, D1Database } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app", {
+  local: true
+});
+
+const db = await D1Database("database", {
+  name: "my-database"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    DB: db  // Binds to local SQLite database
+  }
+});
+
+await app.finalize();
+```
+
+### Cloudflare KV, R2, and More
+
+Most Cloudflare resources work locally through Miniflare:
+
+```typescript
+import { Worker, KVNamespace, R2Bucket } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app", {
+  local: true
+});
+
+const kv = await KVNamespace("cache", {
+  name: "my-cache"
+});
+
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    CACHE: kv,
+    BUCKET: bucket
+  }
+});
+
+await app.finalize();
+```
+
+## Watch Mode
+
+Combine local mode with watch mode for automatic reloading:
+
+```bash
+bun --watch ./alchemy.run.ts --local
+```
+
+Or use the Alchemy CLI:
+
+```bash
+alchemy dev
+```
+
+This automatically:
+- Restarts your script when files change
+- Reloads local workers with new code
+- Preserves local state between reloads
+
+<Tip>
+Watch mode is perfect for rapid iteration during development.
+</Tip>
+
+## Testing Local Resources
+
+Once your resources are running locally, you can test them:
+
+### HTTP Requests
+
+```typescript
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app", {
+  local: true
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+
+console.log(`Worker running at: ${worker.url}`);
+
+await app.finalize();
+
+// Test with curl:
+// curl http://localhost:8787
+```
+
+### Programmatic Testing
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+
+await app.finalize();
+
+// Make request to local worker
+const response = await fetch(worker.url);
+const data = await response.text();
+console.log(data);
+```
+
+## Local vs Production Differences
+
+### Resource Behavior
+
+Some resources behave differently in local mode:
+
+<CodeGroup>
+
+```typescript Local Mode
+const app = await alchemy("my-app", {
+  local: true
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+
+// worker.url = http://localhost:8787
+// Runs in Miniflare locally
+```
+
+```typescript Production Mode
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts"
+});
+
+// worker.url = https://my-app-john-api.account.workers.dev
+// Deployed to Cloudflare
+```
+
+</CodeGroup>
+
+### State Storage
+
+In local mode, state is still persisted to `.alchemy/` but resources run locally:
+
+```bash
+.alchemy/
+  my-app/
+    john/           # Your stage
+      state.json    # Resource state
+  logs/             # Local process logs
+  pids/             # Local process PIDs
+```
+
+## Conditional Local Behavior
+
+Check if running in local mode within resources:
+
+```typescript
+import { Scope } from "alchemy";
+
+const scope = Scope.current;
+
+if (scope.local) {
+  console.log("Running in local development mode");
+  // Use local configuration
+} else {
+  console.log("Running in production mode");
+  // Use production configuration
+}
+```
+
+## Environment Variables
+
+Use different environment variables for local vs production:
+
+<CodeGroup>
+
+```bash .env.local
+ALCHEMY_PASSWORD=local-dev-password
+API_KEY=test-api-key
+DATABASE_URL=http://localhost:5432
+```
+
+```bash .env.production
+ALCHEMY_PASSWORD=production-secure-password
+API_KEY=prod-api-key-xxxx
+DATABASE_URL=postgres://prod-db.example.com
+```
+
+</CodeGroup>
+
+```typescript alchemy.run.ts
+import "dotenv/config";
+import alchemy from "alchemy";
+
+// Load appropriate .env file based on mode
+const envFile = process.argv.includes("--local") 
+  ? ".env.local" 
+  : ".env.production";
+
+const app = await alchemy("my-app");
+// Resources will use appropriate environment variables
+```
+
+## Tunneling
+
+Create a public URL for your local resources using tunnels:
+
+```bash
+bun ./alchemy.run.ts --local --tunnel
+```
+
+This creates a public URL you can share:
+
+```
+Worker running at: https://random-id.trycloudflare.com
+```
+
+<Tip>
+Use tunnels to test webhooks and integrations that require public URLs.
+</Tip>
+
+## Example: Full Local Development Setup
+
+<CodeGroup>
+
+```typescript alchemy.run.ts
+import "dotenv/config";
+import alchemy from "alchemy";
+import { Worker, D1Database, R2Bucket } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("my-app");
+// Run with: bun --watch ./alchemy.run.ts --local
+
+// Database (local SQLite in dev)
+const db = await D1Database("database", {
+  name: "my-database"
+});
+
+// Storage (local filesystem in dev)
+const bucket = await R2Bucket("storage", {
+  name: "my-bucket"
+});
+
+// Worker (local Miniflare in dev)
+const worker = await Worker("api", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    DB: db,
+    BUCKET: bucket,
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+console.log(`
+🚀 Worker running at: ${worker.url}
+
+Test with:
+  curl ${worker.url}
+  curl ${worker.url}/api/users
+`);
+
+await app.finalize();
+```
+
+```typescript src/index.ts
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Access local bindings
+    if (url.pathname === "/api/users") {
+      const users = await env.DB.prepare(
+        "SELECT * FROM users"
+      ).all();
+      
+      return Response.json(users);
+    }
+
+    return new Response("Hello from local development!");
+  }
+};
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+### Port Already in Use
+
+If port 8787 is already in use, specify a different port:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  dev: {
+    port: 8788
+  }
+});
+```
+
+### Local State Not Persisting
+
+Local state is stored in `.alchemy/` - make sure this directory is not gitignored (only `.alchemy/*.sqlite` should be ignored):
+
+```gitignore
+# .gitignore
+.alchemy/*.sqlite
+.alchemy/logs/
+.alchemy/pids/
+```
+
+### Resources Not Reloading
+
+Ensure you're using `--watch` or `bun --watch`:
+
+```bash
+# ✅ This will reload on changes
+bun --watch ./alchemy.run.ts --local
+
+# ❌ This won't reload
+bun ./alchemy.run.ts --local
+```
+
+## Best Practices
+
+<Steps>
+
+### Use Local Mode for Development
+
+Develop and test locally before deploying:
+
+```bash
+# Development
+bun --watch ./alchemy.run.ts --local
+
+# Production deploy
+bun ./alchemy.run.ts
+```
+
+### Separate Environment Variables
+
+Keep local and production configs separate:
+
+```
+.env.local        # Local development
+.env.production   # Production
+.env.example      # Template (commit this)
+```
+
+### Test Thoroughly Locally
+
+Test all functionality locally before deploying:
+
+```typescript
+// Test script
+import alchemy from "alchemy";
+
+const app = await alchemy("my-app", { local: true });
+
+// Create resources...
+
+await app.finalize();
+
+// Run tests
+const response = await fetch(worker.url + "/api/users");
+assert(response.ok);
+```
+
+### Use Tunnels for External Services
+
+When testing webhooks or external integrations:
+
+```bash
+bun ./alchemy.run.ts --local --tunnel
+# Use the public URL for webhook configuration
+```
+
+</Steps>
+
+## Next Steps
+
+- [Testing](/guides/testing) - Write tests for your infrastructure
+- [Deployment](/guides/deployment) - Deploy to production
+- [Custom Providers](/guides/custom-providers) - Build custom resources with local support

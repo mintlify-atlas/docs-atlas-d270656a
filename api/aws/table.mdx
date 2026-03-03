@@ -1,0 +1,150 @@
+---
+title: Table
+description: AWS DynamoDB Table resource for NoSQL database storage
+---
+
+# Table
+
+Creates and manages DynamoDB tables with support for partition and sort keys, flexible billing modes, and automatic table status monitoring.
+
+## Props
+
+<ParamField path="partitionKey" type="object" required>
+  Primary partition key (hash key) configuration. Defines the main identifier for items in the table.
+  
+  <Expandable title="properties">
+    <ParamField path="partitionKey.name" type="string" required>
+      Name of the partition key attribute.
+    </ParamField>
+    
+    <ParamField path="partitionKey.type" type="'S' | 'N' | 'B'" required>
+      Data type of the partition key.
+      
+      - `S`: String
+      - `N`: Number
+      - `B`: Binary
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="tableName" type="string">
+  Name of the DynamoDB table.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="sortKey" type="object">
+  Optional sort key (range key) configuration. Used to sort items with the same partition key.
+  
+  <Expandable title="properties">
+    <ParamField path="sortKey.name" type="string" required>
+      Name of the sort key attribute.
+    </ParamField>
+    
+    <ParamField path="sortKey.type" type="'S' | 'N' | 'B'" required>
+      Data type of the sort key.
+      
+      - `S`: String
+      - `N`: Number
+      - `B`: Binary
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="billingMode" type="'PROVISIONED' | 'PAY_PER_REQUEST'">
+  Billing mode for the table.
+  
+  - `PROVISIONED`: Set read/write capacity units
+  - `PAY_PER_REQUEST`: Pay per request pricing
+</ParamField>
+
+<ParamField path="readCapacity" type="number">
+  Read capacity units when using PROVISIONED billing mode.
+  
+  **Default:** `5`
+</ParamField>
+
+<ParamField path="writeCapacity" type="number">
+  Write capacity units when using PROVISIONED billing mode.
+  
+  **Default:** `5`
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Tags to apply to the table. Key-value pairs for resource organization.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  ARN of the table.
+  
+  **Format:** `arn:aws:dynamodb:region:account-id:table/table-name`
+</ResponseField>
+
+<ResponseField name="tableName" type="string">
+  Name of the DynamoDB Table.
+</ResponseField>
+
+<ResponseField name="streamArn" type="string">
+  ARN of the table's stream if enabled.
+  
+  **Format:** `arn:aws:dynamodb:region:account-id:table/table-name/stream/timestamp`
+</ResponseField>
+
+<ResponseField name="tableId" type="string">
+  Unique identifier for the table.
+</ResponseField>
+
+## Examples
+
+### Table with partition and sort key
+
+```typescript
+import { Table } from "alchemy/aws";
+
+const table = await Table("user-events", {
+  tableName: "user-events",
+  partitionKey: {
+    name: "id",
+    type: "S"
+  },
+  sortKey: {
+    name: "timestamp",
+    type: "N"
+  },
+  tags: {
+    Environment: "test"
+  }
+});
+```
+
+### Table with provisioned capacity
+
+```typescript
+import { Table } from "alchemy/aws";
+
+const table = await Table("high-throughput", {
+  tableName: "high-throughput",
+  partitionKey: {
+    name: "userId",
+    type: "S"
+  },
+  billingMode: "PROVISIONED",
+  readCapacity: 100,
+  writeCapacity: 50
+});
+```
+
+### Simple table with partition key only
+
+```typescript
+import { Table } from "alchemy/aws";
+
+const table = await Table("users", {
+  partitionKey: {
+    name: "id",
+    type: "S"
+  }
+});
+```

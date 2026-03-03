@@ -1,0 +1,212 @@
+---
+title: Cloudflare Durable Objects
+description: Build a WebSocket server with Durable Objects and a Vite client
+---
+
+# Cloudflare Durable Objects Example
+
+This example demonstrates building a real-time WebSocket server using Cloudflare Durable Objects with a Vite frontend client.
+
+## Features
+
+- **Durable Objects**: Stateful WebSocket server with SQLite storage
+- **WebSocket**: Real-time bidirectional communication
+- **Vite Client**: Modern frontend with WebSocket client
+- **Type Safety**: Full TypeScript types for Durable Objects
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install -D vite
+```
+
+### Create alchemy.run.ts
+
+Create infrastructure with both server and client:
+
+```ts
+import alchemy from "alchemy";
+import { DurableObjectNamespace, Vite, Worker } from "alchemy/cloudflare";
+import type { WebSocketServer } from "./src/server.ts";
+
+const app = await alchemy("cloudflare-durable-object-websocket");
+
+export const server = await Worker("server", {
+  name: `${app.name}-${app.stage}-server`,
+  entrypoint: "src/server.ts",
+  adopt: true,
+  bindings: {
+    WS_SERVER: DurableObjectNamespace<WebSocketServer>("ws-server", {
+      className: "WebSocketServer",
+      sqlite: true,
+    }),
+  },
+  dev: {
+    tunnel: !process.env.ALCHEMY_E2E,
+  },
+});
+
+console.log("Server:", server.url);
+
+export const client = await Vite("client", {
+  name: `${app.name}-${app.stage}-client`,
+  adopt: true,
+  env: {
+    VITE_WEBSOCKET_URL: server.url!,
+  },
+  dev: {
+    command: "vite dev --port 5001",
+  },
+});
+
+console.log("Client:", client.url);
+
+if (process.env.ALCHEMY_E2E) {
+  const { test } = await import("./test/e2e.ts");
+  await test({
+    url: server.url,
+  });
+}
+
+await app.finalize();
+```
+
+### Create WebSocket Server
+
+Create `src/server.ts` with Durable Object:
+
+```ts
+import { DurableObject } from "cloudflare:workers";
+import type { server } from "../alchemy.run.ts";
+
+export default {
+  fetch: (req: Request, env: typeof server.Env) => {
+    const url = new URL(req.url);
+    if (url.pathname === "/status") {
+      return new Response("OK");
+    }
+    if (url.pathname !== "/websocket") {
+      return new Response("Not found", { status: 404 });
+    }
+    const stub = env.WS_SERVER.getByName("default");
+    return stub.fetch(req);
+  },
+};
+
+export class WebSocketServer extends DurableObject {
+  declare env: typeof server.Env;
+
+  async fetch(req: Request): Promise<Response> {
+    if (req.headers.get("upgrade") !== "websocket") {
+      return new Response("Not a websocket request", { status: 400 });
+    }
+    const wsPair = new WebSocketPair();
+    const { 0: client, 1: server } = wsPair;
+    this.ctx.acceptWebSocket(server);
+    console.log("accepting websocket request");
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+    });
+  }
+
+  webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ): void | Promise<void> {
+    console.log("message", message);
+    ws.send(`Received message: ${message.toString()}`);
+  }
+
+  webSocketClose(
+    _ws: WebSocket,
+    code: number,
+    reason: string,
+  ): void | Promise<void> {
+    console.log("close", code, reason);
+  }
+
+  webSocketError(_ws: WebSocket, error: unknown): void | Promise<void> {
+    console.log("error", error);
+  }
+}
+```
+
+### Create WebSocket Client
+
+Create a client in your Vite app:
+
+```ts
+const ws = new WebSocket(
+  import.meta.env.VITE_WEBSOCKET_URL.replace('http', 'ws') + '/websocket'
+);
+
+ws.addEventListener('open', () => {
+  console.log('Connected to WebSocket server');
+  ws.send('Hello from client!');
+});
+
+ws.addEventListener('message', (event) => {
+  console.log('Received:', event.data);
+});
+```
+
+### Deploy
+
+Deploy both server and client:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Durable Object with SQLite
+
+Durable Objects support SQLite storage for persistence:
+
+```ts
+WS_SERVER: DurableObjectNamespace<WebSocketServer>("ws-server", {
+  className: "WebSocketServer",
+  sqlite: true,
+})
+```
+
+### WebSocket Lifecycle
+
+Durable Objects provide WebSocket lifecycle hooks:
+
+- `webSocketMessage`: Handle incoming messages
+- `webSocketClose`: Handle connection close
+- `webSocketError`: Handle errors
+
+### Environment Passing
+
+Server URL is passed to the client via environment variables:
+
+```ts
+env: {
+  VITE_WEBSOCKET_URL: server.url!,
+}
+```
+
+### Development Tunnel
+
+Local tunnel for WebSocket testing:
+
+```ts
+dev: {
+  tunnel: !process.env.ALCHEMY_E2E,
+}
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-durable-object-websocket](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-durable-object-websocket)

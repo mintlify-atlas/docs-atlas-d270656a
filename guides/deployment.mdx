@@ -1,0 +1,693 @@
+---
+title: Deployment
+description: Deploy your Alchemy applications to production
+---
+
+# Deployment
+
+Alchemy makes it simple to deploy infrastructure to production. This guide covers deployment strategies, best practices, and CI/CD integration.
+
+## Basic Deployment
+
+Deploy your application by running your `alchemy.run.ts` script:
+
+```bash
+bun ./alchemy.run.ts
+```
+
+This will:
+1. Create or update resources
+2. Save state to `.alchemy/`
+3. Display resource URLs and outputs
+
+## Deployment Phases
+
+Alchemy supports three phases:
+
+### Up Phase (Default)
+
+Create or update resources:
+
+```bash
+bun ./alchemy.run.ts
+# Or explicitly:
+bun ./alchemy.run.ts --stage production
+```
+
+### Read Phase
+
+Read resource state without making changes:
+
+```bash
+bun ./alchemy.run.ts --read
+```
+
+<Tip>
+Use read mode to inspect current infrastructure state.
+</Tip>
+
+### Destroy Phase
+
+Delete all resources:
+
+```bash
+bun ./alchemy.run.ts --destroy
+```
+
+<Warning>
+This will permanently delete all resources in the current stage. Use with caution.
+</Warning>
+
+## Stages
+
+Stages allow you to deploy multiple independent environments (dev, staging, production):
+
+### Using Stages
+
+```bash
+# Development stage (default: your username)
+bun ./alchemy.run.ts
+
+# Staging stage
+bun ./alchemy.run.ts --stage staging
+
+# Production stage
+bun ./alchemy.run.ts --stage production
+```
+
+Each stage has isolated state:
+
+```
+.alchemy/
+  my-app/
+    john/           # Development (your username)
+      state.json
+    staging/
+      state.json
+    production/
+      state.json
+```
+
+### Environment-Specific Configuration
+
+Use different configurations per stage:
+
+```typescript alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+
+const app = await alchemy("my-app");
+const isProd = app.stage === "production";
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    LOG_LEVEL: isProd ? "error" : "debug",
+    API_URL: isProd 
+      ? "https://api.example.com"
+      : "https://staging-api.example.com"
+  }
+});
+
+console.log(`Deployed to: ${worker.url}`);
+
+await app.finalize();
+```
+
+## State Management
+
+### Local State (Default)
+
+By default, Alchemy stores state locally in `.alchemy/`:
+
+```
+.alchemy/
+  my-app/
+    production/
+      state.json      # Resource state
+```
+
+<Note>
+Local state is fine for development, but use remote state stores for CI/CD and teams.
+</Note>
+
+### Remote State
+
+For production and teams, use a remote state store:
+
+<CodeGroup>
+
+```typescript Cloudflare Durable Objects
+import { CloudflareStateStore } from "alchemy/state";
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new CloudflareStateStore(scope)
+});
+```
+
+```typescript AWS S3
+import { S3StateStore } from "alchemy/aws";
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new S3StateStore(scope, {
+    bucket: "my-state-bucket",
+    region: "us-east-1"
+  })
+});
+```
+
+</CodeGroup>
+
+<Warning>
+When running in CI, Alchemy requires a remote state store. Set `ALCHEMY_CI_STATE_STORE_CHECK=false` to disable this check (not recommended).
+</Warning>
+
+## Secrets Management
+
+### Setting Passwords
+
+Secrets require a password for encryption:
+
+```bash
+export ALCHEMY_PASSWORD="your-secure-password"
+bun ./alchemy.run.ts
+```
+
+Or set it programmatically:
+
+```typescript
+const app = await alchemy("my-app", {
+  password: process.env.ALCHEMY_PASSWORD
+});
+```
+
+### Per-Stage Passwords
+
+Use different passwords for different stages:
+
+```bash
+# Development
+export ALCHEMY_PASSWORD="dev-password"
+bun ./alchemy.run.ts --stage dev
+
+# Production
+export ALCHEMY_PASSWORD="prod-password"
+bun ./alchemy.run.ts --stage production
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+<CodeGroup>
+
+```yaml .github/workflows/deploy.yml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: oven-sh/setup-bun@v2
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Deploy to production
+        env:
+          ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun ./alchemy.run.ts --stage production
+```
+
+```yaml .github/workflows/preview.yml
+name: Preview
+
+on:
+  pull_request:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: oven-sh/setup-bun@v2
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Deploy preview
+        env:
+          ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bun ./alchemy.run.ts --stage pr-${{ github.event.pull_request.number }}
+      
+      - name: Cleanup on PR close
+        if: github.event.action == 'closed'
+        run: bun ./alchemy.run.ts --destroy --stage pr-${{ github.event.pull_request.number }}
+```
+
+</CodeGroup>
+
+### GitLab CI
+
+```yaml .gitlab-ci.yml
+stages:
+  - deploy
+
+deploy:production:
+  stage: deploy
+  image: oven/bun:latest
+  only:
+    - main
+  script:
+    - bun install
+    - bun ./alchemy.run.ts --stage production
+  variables:
+    ALCHEMY_PASSWORD: $ALCHEMY_PASSWORD
+    CLOUDFLARE_API_KEY: $CLOUDFLARE_API_KEY
+    CLOUDFLARE_ACCOUNT_ID: $CLOUDFLARE_ACCOUNT_ID
+```
+
+### CircleCI
+
+```yaml .circleci/config.yml
+version: 2.1
+
+jobs:
+  deploy:
+    docker:
+      - image: oven/bun:latest
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: bun install
+      - run:
+          name: Deploy
+          command: bun ./alchemy.run.ts --stage production
+
+workflows:
+  deploy:
+    jobs:
+      - deploy:
+          filters:
+            branches:
+              only: main
+```
+
+## Deployment Strategies
+
+### Blue-Green Deployment
+
+Deploy to a new stage, test, then switch:
+
+<Steps>
+
+### Deploy to Green Stage
+
+```bash
+bun ./alchemy.run.ts --stage green
+```
+
+### Test Green Stage
+
+```bash
+curl https://green-my-app.workers.dev/health
+```
+
+### Switch Traffic
+
+Update DNS or routing to point to green stage.
+
+### Destroy Blue Stage
+
+```bash
+bun ./alchemy.run.ts --destroy --stage blue
+```
+
+</Steps>
+
+### Canary Deployment
+
+Gradually roll out changes:
+
+```typescript
+const app = await alchemy("my-app");
+
+// Deploy canary version
+if (process.argv.includes("--canary")) {
+  const canary = await Worker("api-canary", {
+    entrypoint: "./src/index.ts",
+    routes: [{ pattern: "api.example.com/canary/*" }]
+  });
+}
+
+// Main version
+const main = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  routes: [{ pattern: "api.example.com/*" }]
+});
+
+await app.finalize();
+```
+
+## Rollback
+
+### Quick Rollback
+
+Destroy the current deployment and redeploy a previous version:
+
+```bash
+# Destroy current deployment
+bun ./alchemy.run.ts --destroy --stage production
+
+# Check out previous version
+git checkout <previous-commit>
+
+# Redeploy
+bun ./alchemy.run.ts --stage production
+```
+
+### State-Based Rollback
+
+Alchemy maintains state history. You can manually restore previous state:
+
+```bash
+# Backup current state
+cp .alchemy/my-app/production/state.json .alchemy/my-app/production/state.json.backup
+
+# Restore previous state
+cp .alchemy/my-app/production/state.json.previous .alchemy/my-app/production/state.json
+
+# Apply
+bun ./alchemy.run.ts --stage production
+```
+
+## Monitoring Deployments
+
+### Deployment Logs
+
+Alchemy logs all resource operations:
+
+```
+Create Worker "my-app-production-api"
+Update D1Database "my-app-production-db"
+Delete R2Bucket "old-bucket"
+```
+
+### Quiet Mode
+
+Suppress logs in CI:
+
+```bash
+bun ./alchemy.run.ts --quiet --stage production
+```
+
+Or programmatically:
+
+```typescript
+const app = await alchemy("my-app", {
+  quiet: true
+});
+```
+
+### Telemetry
+
+Alchemy sends anonymous telemetry by default. Opt out:
+
+```bash
+export ALCHEMY_TELEMETRY_DISABLED=1
+bun ./alchemy.run.ts
+```
+
+Or:
+
+```typescript
+const app = await alchemy("my-app", {
+  noTrack: true
+});
+```
+
+## Best Practices
+
+<Steps>
+
+### Use Remote State in CI
+
+Never use local state in CI/CD:
+
+```typescript
+import { CloudflareStateStore } from "alchemy/state";
+
+const app = await alchemy("my-app", {
+  stateStore: (scope) => new CloudflareStateStore(scope)
+});
+```
+
+### Separate Stages
+
+Use dedicated stages for each environment:
+
+```bash
+# Development
+bun ./alchemy.run.ts --stage dev
+
+# Staging
+bun ./alchemy.run.ts --stage staging
+
+# Production
+bun ./alchemy.run.ts --stage production
+```
+
+### Store Secrets Securely
+
+Use GitHub Secrets, AWS Secrets Manager, or similar:
+
+```yaml
+env:
+  ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
+  CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+```
+
+### Test Before Production
+
+Always test in staging first:
+
+```yaml
+jobs:
+  deploy-staging:
+    steps:
+      - run: bun ./alchemy.run.ts --stage staging
+      - run: bun test
+  
+  deploy-production:
+    needs: deploy-staging
+    steps:
+      - run: bun ./alchemy.run.ts --stage production
+```
+
+### Use Consistent Naming
+
+Follow a naming convention:
+
+```typescript
+const app = await alchemy("my-company-my-app");
+// Resources: my-company-my-app-production-api
+```
+
+### Enable Adoption for Existing Resources
+
+When migrating to Alchemy:
+
+```typescript
+const app = await alchemy("my-app", {
+  adopt: true  // Adopt existing resources
+});
+```
+
+</Steps>
+
+## Multi-Region Deployment
+
+Deploy to multiple regions:
+
+```typescript
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+
+const regions = ["us-east", "us-west", "eu-central"];
+
+for (const region of regions) {
+  const app = await alchemy(`my-app-${region}`, {
+    stage: "production"
+  });
+  
+  const worker = await Worker(`api-${region}`, {
+    entrypoint: "./src/index.ts",
+    bindings: {
+      REGION: region
+    }
+  });
+  
+  console.log(`${region}: ${worker.url}`);
+  
+  await app.finalize();
+}
+```
+
+## Troubleshooting
+
+### State Conflicts
+
+If multiple deployments run simultaneously:
+
+```
+Error: State conflict detected
+```
+
+Solution: Use a state store with locking (CloudflareStateStore, S3StateStore).
+
+### Missing Credentials
+
+```
+Error: CLOUDFLARE_API_KEY is required
+```
+
+Ensure all required environment variables are set:
+
+```bash
+export CLOUDFLARE_API_KEY=your-key
+export CLOUDFLARE_ACCOUNT_ID=your-id
+```
+
+### Orphaned Resources
+
+If resources aren't cleaned up:
+
+```bash
+bun ./alchemy.run.ts --force --stage production
+```
+
+This forces a full reconciliation.
+
+## Example: Production Deployment
+
+<CodeGroup>
+
+```typescript alchemy.run.ts
+import "dotenv/config";
+import alchemy from "alchemy";
+import { Worker, D1Database, R2Bucket } from "alchemy/cloudflare";
+import { CloudflareStateStore } from "alchemy/state";
+import path from "node:path";
+
+// Production-ready configuration
+const app = await alchemy("my-app", {
+  // Use remote state in production
+  stateStore: (scope) => new CloudflareStateStore(scope),
+  // Require password for secrets
+  password: process.env.ALCHEMY_PASSWORD,
+  // Disable telemetry if needed
+  noTrack: process.env.ALCHEMY_TELEMETRY_DISABLED === "1"
+});
+
+// Infrastructure
+const db = await D1Database("database", {
+  name: `${app.appName}-${app.stage}-db`
+});
+
+const bucket = await R2Bucket("storage", {
+  name: `${app.appName}-${app.stage}-storage`
+});
+
+// Application
+const worker = await Worker("api", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    DB: db,
+    BUCKET: bucket,
+    API_KEY: alchemy.secret.env.API_KEY,
+    LOG_LEVEL: app.stage === "production" ? "error" : "debug"
+  }
+});
+
+console.log(`
+Deployment complete!
+
+Stage: ${app.stage}
+Worker: ${worker.url}
+Database: ${db.name}
+Bucket: ${bucket.name}
+`);
+
+await app.finalize();
+```
+
+```yaml .github/workflows/deploy.yml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Deployment stage'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Deploy
+        env:
+          ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          STAGE=${{ github.event.inputs.stage || 'production' }}
+          bun ./alchemy.run.ts --stage $STAGE
+      
+      - name: Notify
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "Deployment succeeded!"
+          else
+            echo "Deployment failed!"
+          fi
+```
+
+</CodeGroup>
+
+## Next Steps
+
+- [Managing Secrets](/guides/managing-secrets) - Secure secret management
+- [Monorepo Setup](/guides/monorepo-setup) - Deploy multiple applications
+- [Testing](/guides/testing) - Test before deploying

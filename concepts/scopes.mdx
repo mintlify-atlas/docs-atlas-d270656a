@@ -1,0 +1,523 @@
+---
+title: Scopes
+description: Organize and isolate infrastructure with Alchemy's scope system
+---
+
+# Scopes
+
+Scopes provide hierarchical organization and isolation for your infrastructure. They enable you to group related resources, manage different environments (dev, staging, prod), and control resource lifecycle at multiple levels.
+
+## What is a Scope?
+
+A scope is a container for resources that provides:
+
+- **Namespacing**: Unique resource identification within a scope
+- **State isolation**: Each scope maintains its own state
+- **Hierarchical organization**: Scopes can contain child scopes
+- **Environment separation**: Different stages (dev, prod) are separate scopes
+- **Credential management**: Scopes can override provider credentials
+
+<Note>
+  Every Alchemy application has at least two scopes: the root scope (app name) and a stage scope (e.g., "dev", "prod").
+</Note>
+
+## Scope Hierarchy
+
+Alchemy applications have a built-in scope hierarchy:
+
+```
+my-app (root scope)
+└── dev (stage scope)
+    ├── api (resource)
+    ├── database (resource)
+    └── storage (child scope)
+        └── images (resource)
+```
+
+The fully qualified name (FQN) reflects this hierarchy:
+
+```
+my-app/dev/api
+my-app/dev/storage/images
+```
+
+## Creating Scopes
+
+### Application Scope
+
+Create the root application scope with `alchemy()`:
+
+```typescript
+import { alchemy } from "alchemy";
+
+const app = await alchemy("my-app");
+
+// Resources created here are in the "my-app/dev" scope
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+
+await app.finalize();
+```
+
+<Info>
+  The stage scope ("dev") is automatically created based on the `--stage` flag or `ALCHEMY_STAGE` environment variable.
+</Info>
+
+### Child Scopes
+
+Create child scopes with `alchemy.run()`:
+
+```typescript
+import { alchemy } from "alchemy";
+
+const app = await alchemy("my-app");
+
+await alchemy.run("storage", async (scope) => {
+  // Resources here are in "my-app/dev/storage"
+  
+  const imageBucket = await R2Bucket("images", {
+    name: "user-images"
+  });
+  
+  const documentBucket = await R2Bucket("documents", {
+    name: "user-documents"
+  });
+});
+
+await app.finalize();
+```
+
+## Scope Properties
+
+Scopes provide access to configuration and metadata:
+
+```typescript
+const app = await alchemy("my-app", {
+  stage: "prod",
+  password: process.env.ALCHEMY_PASSWORD
+});
+
+await alchemy.run("database", async (scope) => {
+  console.log(scope.appName);    // "my-app"
+  console.log(scope.stage);      // "prod"
+  console.log(scope.name);       // "database"
+  console.log(scope.scopeName);  // "database"
+  console.log(scope.chain);      // ["my-app", "prod", "database"]
+  console.log(scope.local);      // false (true if --local flag)
+  console.log(scope.watch);      // false (true if --watch flag)
+  console.log(scope.phase);      // "up" (or "destroy", "read")
+});
+```
+
+## Scope Options
+
+### Stage Configuration
+
+Specify which environment to deploy to:
+
+```bash
+# Deploy to production
+bun ./alchemy.run.ts --stage prod
+
+# Deploy to development (default)
+bun ./alchemy.run.ts --stage dev
+```
+
+Or programmatically:
+
+```typescript
+const app = await alchemy("my-app", {
+  stage: "prod"
+});
+```
+
+<Warning>
+  Different stages maintain completely separate state. Resources in "dev" are independent from resources in "prod".
+</Warning>
+
+### Deployment Phases
+
+Scopes operate in different phases:
+
+| Phase | Description | Trigger |
+|-------|-------------|----------|
+| `"up"` | Create or update resources | Default behavior |
+| `"destroy"` | Delete all resources | `--destroy` flag |
+| `"read"` | Read-only, no changes | `--read` flag or `--app` for non-selected apps |
+
+```typescript
+const app = await alchemy("my-app");
+
+await alchemy.run("api", async (scope) => {
+  if (scope.phase === "destroy") {
+    console.log("Cleaning up resources...");
+  }
+  
+  // Resources automatically respect the phase
+  const worker = await Worker("api", {
+    entrypoint: "./src/api.ts"
+  });
+});
+
+await app.finalize();
+```
+
+### Local Development
+
+Enable local simulation mode:
+
+```bash
+bun ./alchemy.run.ts --local
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  local: true
+});
+
+await alchemy.run("api", async (scope) => {
+  console.log(scope.local); // true
+  
+  // Resources can provide local alternatives
+  const worker = await Worker("api", {
+    entrypoint: "./src/api.ts"
+  });
+  // Returns local worker URL instead of deployed URL
+});
+```
+
+<Tip>
+  Local mode allows you to develop and test infrastructure code without deploying to the cloud.
+</Tip>
+
+### Watch Mode
+
+Automatically redeploy on file changes:
+
+```bash
+bun --watch ./alchemy.run.ts
+```
+
+Resources can detect watch mode:
+
+```typescript
+await alchemy.run("api", async (scope) => {
+  if (scope.watch) {
+    console.log("Watch mode enabled - auto-redeploying on changes");
+  }
+});
+```
+
+## Scope State Management
+
+Scopes can store and retrieve custom data:
+
+```typescript
+await alchemy.run("cache", async (scope) => {
+  // Store data in scope state
+  await scope.set("lastDeployment", new Date().toISOString());
+  
+  // Retrieve data
+  const lastDeployment = await scope.get<string>("lastDeployment");
+  console.log(`Last deployed: ${lastDeployment}`);
+  
+  // Delete data
+  await scope.delete("lastDeployment");
+});
+```
+
+<Note>
+  Scope state is separate from resource state and persists across deployments.
+</Note>
+
+## Physical Name Generation
+
+Scopes provide utilities for generating deterministic resource names:
+
+```typescript
+await alchemy.run("services", async (scope) => {
+  const name = scope.createPhysicalName("api");
+  // Returns: "my-app-services-api-dev"
+  
+  const shortName = scope.createPhysicalName("db", "-", 20);
+  // Returns: "my-app-services-d" (truncated to 20 chars)
+});
+```
+
+Format: `{appName}-{scope-chain}-{id}-{stage}`
+
+## Provider Credentials
+
+Scopes can override provider credentials:
+
+```typescript
+declare module "alchemy" {
+  interface ProviderCredentials {
+    aws?: {
+      accessKeyId: string;
+      secretAccessKey: string;
+      region: string;
+    };
+  }
+}
+
+const app = await alchemy("my-app", {
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    region: "us-east-1"
+  }
+});
+
+await alchemy.run("eu-services", {
+  aws: {
+    ...app.providerCredentials.aws,
+    region: "eu-west-1"  // Override region for this scope
+  }
+}, async (scope) => {
+  // Resources in this scope use eu-west-1
+});
+```
+
+## Scope Lifecycle
+
+### Initialization
+
+Scopes are initialized when created:
+
+```typescript
+const app = await alchemy("my-app");
+// State store is initialized
+// Stage scope is created
+
+await alchemy.run("services", async (scope) => {
+  // Child scope is initialized
+  // Resources can be created
+});
+// Child scope is automatically finalized
+
+await app.finalize();
+// Root and stage scopes are finalized
+// Orphaned resources are cleaned up
+```
+
+### Finalization
+
+Finalization handles cleanup and orphan detection:
+
+<Steps>
+  <Step title="Execute deferred operations">
+    Any operations registered with `scope.defer()` are executed
+  </Step>
+  <Step title="Finalize child scopes">
+    All child scopes are finalized recursively
+  </Step>
+  <Step title="Detect orphaned resources">
+    Resources that exist in state but not in code are identified
+  </Step>
+  <Step title="Destroy orphans">
+    Orphaned resources are deleted using the configured destroy strategy
+  </Step>
+  <Step title="Cleanup processes">
+    Any cleanup functions registered with `scope.onCleanup()` are called
+  </Step>
+</Steps>
+
+```typescript
+const app = await alchemy("my-app");
+
+// Create resources
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+
+// This is critical - finalizes scopes and cleans up orphans
+await app.finalize();
+```
+
+<Warning>
+  Always call `app.finalize()` at the end of your script. Without it, orphaned resources won't be cleaned up.
+</Warning>
+
+## Process Management
+
+Scopes can spawn and manage long-running processes:
+
+```typescript
+await alchemy.run("dev-server", async (scope) => {
+  // Spawn a process that's automatically tracked
+  const url = await scope.spawn("vite", {
+    command: "vite",
+    args: ["--port", "3000"],
+    extract: (line) => {
+      const match = line.match(/Local:\s+(http:\/\/[^\s]+)/);
+      return match?.[1];
+    }
+  });
+  
+  console.log(`Dev server running at: ${url}`);
+});
+```
+
+<Info>
+  Processes spawned with `scope.spawn()` are automatically stopped when the process exits.
+</Info>
+
+## Cleanup Handlers
+
+Register cleanup functions to run when the process exits:
+
+```typescript
+await alchemy.run("tunnel", async (scope) => {
+  const tunnel = await startTunnel();
+  
+  scope.onCleanup(async () => {
+    console.log("Closing tunnel...");
+    await tunnel.close();
+  });
+});
+```
+
+## Scope Isolation
+
+Each scope maintains isolated state:
+
+```typescript
+const app = await alchemy("my-app");
+
+await alchemy.run("api", async (apiScope) => {
+  await apiScope.set("version", "1.0.0");
+});
+
+await alchemy.run("worker", async (workerScope) => {
+  const version = await workerScope.get("version");
+  console.log(version); // undefined - different scope
+});
+
+await app.finalize();
+```
+
+## Error Handling
+
+Scopes track errors and propagate them:
+
+```typescript
+await alchemy.run("failing-service", async (scope) => {
+  try {
+    const worker = await Worker("api", {
+      entrypoint: "./invalid-path.ts"  // This will fail
+    });
+  } catch (error) {
+    scope.fail();
+    throw error;
+  }
+});
+// Scope is marked as failed
+// Finalization will skip orphan cleanup for failed scopes
+```
+
+## Adoption Mode
+
+Adopt existing resources that aren't yet managed:
+
+```bash
+bun ./alchemy.run.ts --adopt
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  adopt: true
+});
+
+// Will adopt existing resources instead of erroring on conflicts
+const bucket = await R2Bucket("existing-bucket", {
+  name: "my-existing-bucket"
+});
+```
+
+<Tip>
+  Adoption is useful when migrating existing infrastructure to Alchemy.
+</Tip>
+
+## Quiet Mode
+
+Suppress creation/update/deletion logs:
+
+```bash
+bun ./alchemy.run.ts --quiet
+```
+
+```typescript
+const app = await alchemy("my-app", {
+  quiet: true
+});
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use meaningful scope names">
+    Choose names that describe the purpose: `"api"`, `"database"`, `"storage"`
+  </Step>
+  <Step title="Organize by lifecycle">
+    Group resources that should be deployed/destroyed together
+  </Step>
+  <Step title="Leverage scope chain">
+    Access parent scope properties via `scope.parent` when needed
+  </Step>
+  <Step title="Always finalize">
+    Call `await app.finalize()` to ensure proper cleanup
+  </Step>
+  <Step title="Use stage isolation">
+    Maintain separate stages for dev, staging, and production
+  </Step>
+</Steps>
+
+## Advanced Patterns
+
+### Conditional Scopes
+
+Create scopes conditionally:
+
+```typescript
+const app = await alchemy("my-app");
+
+if (app.stage === "prod") {
+  await alchemy.run("monitoring", async () => {
+    // Production-only monitoring resources
+  });
+}
+
+await app.finalize();
+```
+
+### Scoped Secrets
+
+Different scopes can use different passwords:
+
+```typescript
+await alchemy.run("secure-service", {
+  password: process.env.SECURE_PASSWORD
+}, async (scope) => {
+  // Secrets in this scope use SECURE_PASSWORD
+  const apiKey = alchemy.secret(process.env.API_KEY);
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Resources" icon="cube" href="/concepts/resources">
+    Learn about creating and managing resources
+  </Card>
+  <Card title="State Management" icon="database" href="/concepts/state-management">
+    Understand how state is stored and managed
+  </Card>
+  <Card title="Secrets" icon="key" href="/concepts/secrets">
+    Secure sensitive configuration values
+  </Card>
+  <Card title="Lifecycle" icon="rotate" href="/concepts/lifecycle">
+    Deep dive into deployment phases
+  </Card>
+</CardGroup>

@@ -1,0 +1,118 @@
+---
+title: Vercel provider
+description: Deploy projects and manage domains on Vercel
+---
+
+The Vercel provider enables you to deploy projects and manage custom domains on the Vercel platform.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Create a Vercel API token at [vercel.com/account/tokens](https://vercel.com/account/tokens) and set environment variables:
+
+```bash
+export VERCEL_TOKEN="your-api-token"
+export VERCEL_TEAM_ID="your-team-id" # Optional, for team accounts
+```
+
+## Available resources
+
+- **Project** - Vercel project deployment
+- **Domain** - Custom domain configuration
+
+## Example usage
+
+```typescript
+import alchemy from "alchemy";
+import { Project, Domain } from "alchemy/vercel";
+
+const app = await alchemy("vercel-app");
+
+// Deploy a Vercel project
+const project = await Project("website", {
+  name: "my-website",
+  framework: "nextjs",
+  buildCommand: "npm run build",
+  outputDirectory: ".next",
+  installCommand: "npm install",
+  environmentVariables: {
+    API_URL: "https://api.example.com",
+    DATABASE_URL: alchemy.secret.env.DATABASE_URL,
+  },
+});
+
+// Configure a custom domain
+const domain = await Domain("custom-domain", {
+  name: "example.com",
+  project,
+});
+
+console.log(`Project URL: ${project.url}`);
+console.log(`Custom domain: ${domain.name}`);
+
+await app.finalize();
+```
+
+## Git integration
+
+Vercel projects can be connected to Git repositories:
+
+```typescript
+const project = await Project("app", {
+  name: "my-app",
+  git: {
+    type: "github",
+    repo: "username/repository",
+    productionBranch: "main",
+  },
+});
+```
+
+## Environment variables
+
+Manage environment variables across different environments:
+
+```typescript
+const project = await Project("app", {
+  name: "my-app",
+  environmentVariables: {
+    // Available in all environments
+    API_URL: "https://api.example.com",
+  },
+  productionEnvironmentVariables: {
+    // Production only
+    DATABASE_URL: alchemy.secret.env.PROD_DATABASE_URL,
+  },
+  previewEnvironmentVariables: {
+    // Preview deployments
+    DATABASE_URL: alchemy.secret.env.PREVIEW_DATABASE_URL,
+  },
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Vercel API" icon="triangle" href="/api/services/vercel">
+    Complete API reference
+  </Card>
+  <Card title="Cloudflare" icon="cloud" href="/providers/cloudflare">
+    Alternative edge platform
+  </Card>
+</CardGroup>

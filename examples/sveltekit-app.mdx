@@ -1,0 +1,280 @@
+---
+title: SvelteKit on Cloudflare
+description: Deploy a SvelteKit application to Cloudflare with KV and R2 storage
+---
+
+# SvelteKit on Cloudflare Example
+
+This example demonstrates deploying a SvelteKit application to Cloudflare with KV Namespace and R2 Bucket bindings.
+
+## Features
+
+- **SvelteKit**: Modern Svelte meta-framework
+- **KV Namespace**: Key-value storage for auth/sessions
+- **R2 Bucket**: Object storage
+- **Environment Bindings**: Secrets and configuration
+- **Type Safety**: Full TypeScript types for platform
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install @sveltejs/kit @sveltejs/adapter-cloudflare
+```
+
+### Create alchemy.run.ts
+
+Create infrastructure with KV and R2:
+
+```ts
+import alchemy from "alchemy";
+import { KVNamespace, R2Bucket, SvelteKit } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-sveltekit");
+
+const [authStore, storage] = await Promise.all([
+  KVNamespace("auth-store", {
+    title: `${app.name}-${app.stage}-auth-store`,
+    adopt: true,
+  }),
+  R2Bucket("storage", {
+    allowPublicAccess: false,
+    adopt: true,
+    name: `${app.name}-${app.stage}-storage`,
+  }),
+]);
+
+export const website = await SvelteKit("website", {
+  name: `${app.name}-${app.stage}-website`,
+  bindings: {
+    AUTH_STORE: authStore,
+    STORAGE: storage,
+    ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+  },
+  url: true,
+});
+
+console.log(website.url);
+
+if (process.env.ALCHEMY_E2E) {
+  const { test } = await import("./test/e2e.js");
+  await test({
+    url: website.url,
+    env: { ALCHEMY_TEST_VALUE: "Hello from Alchemy!" },
+  });
+}
+
+await app.finalize();
+```
+
+### Configure SvelteKit
+
+Create `svelte.config.js`:
+
+```js
+import adapter from '@sveltejs/adapter-cloudflare';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+
+export default {
+  preprocess: vitePreprocess(),
+  kit: {
+    adapter: adapter(),
+  },
+};
+```
+
+### Environment Types
+
+Create `src/app.d.ts` for platform types:
+
+```ts
+import type { website } from "./alchemy.run";
+
+declare global {
+  namespace App {
+    interface Platform {
+      env: typeof website.Env;
+    }
+  }
+}
+
+export {};
+```
+
+### Create Routes with Server Load
+
+Create `src/routes/+page.server.ts`:
+
+```ts
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ platform }) => {
+  const env = platform?.env;
+  
+  if (!env) {
+    throw new Error('Platform env not available');
+  }
+  
+  // Access KV
+  await env.AUTH_STORE.put('last-visit', new Date().toISOString());
+  const lastVisit = await env.AUTH_STORE.get('last-visit');
+  
+  // Access R2
+  await env.STORAGE.put('test.txt', 'Hello from SvelteKit!');
+  const file = await env.STORAGE.get('test.txt');
+  const content = await file?.text();
+  
+  return {
+    message: env.ALCHEMY_TEST_VALUE,
+    lastVisit,
+    fileContent: content,
+  };
+};
+```
+
+### Create Page Component
+
+Create `src/routes/+page.svelte`:
+
+```svelte
+<script lang="ts">
+  import type { PageData } from './$types';
+  
+  export let data: PageData;
+</script>
+
+<div>
+  <h1>SvelteKit on Cloudflare</h1>
+  <p>Message: {data.message}</p>
+  <p>Last Visit: {data.lastVisit}</p>
+  <p>File Content: {data.fileContent}</p>
+</div>
+```
+
+### API Routes
+
+Create `src/routes/api/upload/+server.ts`:
+
+```ts
+import type { RequestHandler } from './$types';
+import { json } from '@sveltejs/kit';
+
+export const POST: RequestHandler = async ({ request, platform }) => {
+  const env = platform?.env;
+  
+  if (!env) {
+    return json({ error: 'Platform not available' }, { status: 500 });
+  }
+  
+  const formData = await request.formData();
+  const file = formData.get('file') as File;
+  
+  if (!file) {
+    return json({ error: 'No file provided' }, { status: 400 });
+  }
+  
+  // Upload to R2
+  const buffer = await file.arrayBuffer();
+  await env.STORAGE.put(file.name, buffer);
+  
+  return json({ 
+    success: true, 
+    filename: file.name,
+    size: file.size,
+  });
+};
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Multiple Bindings
+
+SvelteKit has access to multiple Cloudflare resources:
+
+```ts
+bindings: {
+  AUTH_STORE: authStore,
+  STORAGE: storage,
+  ALCHEMY_TEST_VALUE: alchemy.secret("Hello from Alchemy!"),
+}
+```
+
+### Platform Access
+
+Access bindings through the platform object:
+
+```ts
+export const load: PageServerLoad = async ({ platform }) => {
+  const env = platform?.env;
+  // Use env.AUTH_STORE, env.STORAGE, etc.
+};
+```
+
+### KV for Sessions
+
+Use KV Namespace for session storage:
+
+```ts
+await env.AUTH_STORE.put('session-id', JSON.stringify(sessionData));
+const session = await env.AUTH_STORE.get('session-id');
+```
+
+### R2 for File Storage
+
+Use R2 Bucket for file uploads:
+
+```ts
+const buffer = await file.arrayBuffer();
+await env.STORAGE.put(file.name, buffer);
+```
+
+## Advanced Usage
+
+### Authentication with KV
+
+```ts
+// Store session
+export const login: RequestHandler = async ({ request, platform, cookies }) => {
+  const env = platform?.env;
+  const formData = await request.formData();
+  
+  const sessionId = crypto.randomUUID();
+  await env.AUTH_STORE.put(`session:${sessionId}`, JSON.stringify({
+    userId: '123',
+    email: formData.get('email'),
+    createdAt: Date.now(),
+  }), {
+    expirationTtl: 86400, // 24 hours
+  });
+  
+  cookies.set('session', sessionId, { path: '/' });
+  return json({ success: true });
+};
+
+// Retrieve session
+export const load: PageServerLoad = async ({ platform, cookies }) => {
+  const sessionId = cookies.get('session');
+  if (!sessionId) return { user: null };
+  
+  const session = await platform?.env.AUTH_STORE.get(`session:${sessionId}`);
+  return { user: session ? JSON.parse(session) : null };
+};
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-sveltekit](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-sveltekit)

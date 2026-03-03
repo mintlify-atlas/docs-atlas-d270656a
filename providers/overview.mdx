@@ -1,0 +1,142 @@
+---
+title: Provider overview
+description: Explore the cloud providers and services supported by Alchemy
+---
+
+Alchemy supports multiple cloud providers and third-party services through its extensible resource system. Each provider offers a set of resources that can be deployed, updated, and managed through TypeScript code.
+
+## Available providers
+
+<CardGroup cols={3}>
+  <Card title="Cloudflare" icon="cloud" href="/providers/cloudflare">
+    Deploy Workers, Durable Objects, R2 buckets, and more
+  </Card>
+  <Card title="AWS" icon="aws" href="/providers/aws">
+    Lambda functions, DynamoDB tables, S3 buckets, and IAM
+  </Card>
+  <Card title="Neon" icon="database" href="/providers/neon">
+    Serverless Postgres databases with branching
+  </Card>
+  <Card title="PlanetScale" icon="database" href="/providers/planetscale">
+    MySQL-compatible serverless database platform
+  </Card>
+  <Card title="Vercel" icon="triangle" href="/providers/vercel">
+    Deploy projects and manage domains
+  </Card>
+  <Card title="GitHub" icon="github" href="/providers/github">
+    Repository webhooks and environments
+  </Card>
+  <Card title="Stripe" icon="stripe" href="/providers/stripe">
+    Payment processing and webhook management
+  </Card>
+  <Card title="Upstash" icon="bolt" href="/providers/upstash">
+    Redis and Kafka serverless databases
+  </Card>
+  <Card title="Sentry" icon="bug" href="/providers/sentry">
+    Error tracking and performance monitoring
+  </Card>
+</CardGroup>
+
+## Provider structure
+
+Each provider in Alchemy follows a consistent pattern:
+
+```typescript
+import { ResourceName } from "alchemy/provider";
+
+const resource = await ResourceName("logical-id", {
+  // Configuration properties
+});
+```
+
+### Credentials
+
+Most providers require credentials to authenticate API calls. Alchemy uses environment variables and secrets for secure credential management:
+
+```typescript
+import alchemy from "alchemy";
+
+const app = await alchemy("my-app", {
+  password: process.env.ALCHEMY_PASSWORD,
+});
+
+// Cloudflare credentials
+process.env.CLOUDFLARE_API_TOKEN;
+process.env.CLOUDFLARE_ACCOUNT_ID;
+
+// AWS credentials
+process.env.AWS_ACCESS_KEY_ID;
+process.env.AWS_SECRET_ACCESS_KEY;
+process.env.AWS_REGION;
+
+// Database credentials stored as secrets
+const db = await Database("db", {
+  password: alchemy.secret.env.DB_PASSWORD,
+});
+```
+
+## Multi-provider applications
+
+Alchemy makes it easy to use multiple providers in a single application:
+
+```typescript
+import alchemy from "alchemy";
+import { Worker, R2Bucket } from "alchemy/cloudflare";
+import { Function, Table } from "alchemy/aws";
+import { Database } from "alchemy/neon";
+
+const app = await alchemy("multi-cloud-app");
+
+// Cloudflare edge compute
+const storage = await R2Bucket("storage", { name: "app-storage" });
+
+// AWS serverless backend
+const table = await Table("users", {
+  partitionKey: { name: "id", type: "S" },
+});
+
+const api = await Function("api", {
+  handler: "index.handler",
+  code: "./src/api",
+  environment: {
+    TABLE_NAME: table.tableName,
+  },
+});
+
+// Neon serverless Postgres
+const database = await Database("db", {
+  name: "app-db",
+});
+
+const worker = await Worker("worker", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    STORAGE: storage,
+    API_URL: api.functionUrl,
+    DATABASE_URL: database.connectionString,
+  },
+});
+
+await app.finalize();
+```
+
+## Creating custom providers
+
+You can extend Alchemy with your own custom providers. See the [Custom Providers guide](/guides/custom-providers) for details on implementing your own resources.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Cloudflare provider" icon="cloud" href="/providers/cloudflare">
+    Explore Cloudflare Workers and edge infrastructure
+  </Card>
+  <Card title="AWS provider" icon="aws" href="/providers/aws">
+    Deploy Lambda functions and serverless AWS resources
+  </Card>
+  <Card title="Custom providers" icon="code" href="/guides/custom-providers">
+    Learn how to create your own resource providers
+  </Card>
+  <Card title="API reference" icon="book" href="/api/alchemy">
+    Browse the complete API documentation
+  </Card>
+</CardGroup>

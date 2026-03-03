@@ -1,0 +1,171 @@
+---
+title: Policy
+description: AWS IAM Policy resource for defining permissions
+---
+
+# Policy
+
+Creates and manages IAM policies that define permissions for AWS services and resources. Supports automatic versioning and updates when policy content changes.
+
+## Props
+
+<ParamField path="document" type="PolicyDocument" required>
+  Policy document defining the permissions.
+</ParamField>
+
+<ParamField path="policyName" type="string">
+  Name of the policy.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the policy's purpose.
+</ParamField>
+
+<ParamField path="path" type="string">
+  Optional path prefix for the policy.
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Optional resource tags.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  ARN of the policy.
+</ResponseField>
+
+<ResponseField name="policyName" type="string">
+  Name of the Policy.
+</ResponseField>
+
+<ResponseField name="defaultVersionId" type="string">
+  ID of the default policy version.
+</ResponseField>
+
+<ResponseField name="attachmentCount" type="number">
+  Number of entities the policy is attached to.
+</ResponseField>
+
+<ResponseField name="createDate" type="Date">
+  When the policy was created.
+</ResponseField>
+
+<ResponseField name="updateDate" type="Date">
+  When the policy was last updated.
+</ResponseField>
+
+<ResponseField name="isAttachable" type="boolean">
+  Whether the policy can be attached to IAM users/roles.
+</ResponseField>
+
+## PolicyDocument Type
+
+A PolicyDocument is an object with the following structure:
+
+```typescript
+interface PolicyDocument {
+  Version: "2012-10-17";
+  Statement: PolicyStatement[];
+}
+
+interface PolicyStatement {
+  Sid?: string;
+  Effect: "Allow" | "Deny";
+  Action: string | string[];
+  Resource?: string | string[];
+  Condition?: Record<string, Record<string, string | string[]>>;
+  Principal?: Record<string, string | string[]>;
+  NotPrincipal?: Record<string, string | string[]>;
+  NotAction?: string | string[];
+  NotResource?: string | string[];
+}
+```
+
+## Examples
+
+### Basic S3 bucket access policy
+
+```typescript
+import { Policy } from "alchemy/aws";
+
+const s3Policy = await Policy("bucket-access", {
+  policyName: "s3-bucket-access",
+  document: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Action: [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      Resource: `${bucket.arn}/*`
+    }]
+  }
+});
+```
+
+### Policy with multiple statements and conditions
+
+```typescript
+import { Policy } from "alchemy/aws";
+
+const apiPolicy = await Policy("api-access", {
+  policyName: "api-gateway-access",
+  document: {
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Sid: "InvokeAPI",
+        Effect: "Allow",
+        Action: "execute-api:Invoke",
+        Resource: `${api.executionArn}/*`,
+        Condition: {
+          StringEquals: {
+            "aws:SourceVpc": vpc.id
+          }
+        }
+      },
+      {
+        Sid: "ReadLogs",
+        Effect: "Allow",
+        Action: [
+          "logs:GetLogEvents",
+          "logs:FilterLogEvents"
+        ],
+        Resource: `${api.logGroupArn}:*`
+      }
+    ]
+  },
+  description: "Allows invoking API Gateway endpoints and reading logs",
+  tags: {
+    Service: "API Gateway",
+    Environment: "production"
+  }
+});
+```
+
+### Policy that denies access based on tags
+
+```typescript
+import { Policy } from "alchemy/aws";
+
+const denyPolicy = await Policy("deny-production", {
+  policyName: "deny-production-access",
+  document: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Deny",
+      Action: "*",
+      Resource: "*",
+      Condition: {
+        StringEquals: {
+          "aws:ResourceTag/Environment": "production"
+        }
+      }
+    }]
+  }
+});
+```

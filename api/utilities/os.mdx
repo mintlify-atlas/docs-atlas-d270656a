@@ -1,0 +1,334 @@
+---
+title: "Operating System"
+description: "Execute shell commands and system operations"
+---
+
+## Exec
+
+Execute shell commands as Alchemy resources with support for environment variables, secrets, working directories, and memoization.
+
+### Properties
+
+<ParamField path="command" type="string" required>
+  The command to execute (including any arguments).
+</ParamField>
+
+<ParamField path="memoize" type="boolean | { patterns: string[] }">
+  Whether to memoize the command (only re-run if the command changes).
+  
+  When set to `true`, the command will only be re-executed if the command string changes.
+  
+  When set to an object with `patterns`, the command will be re-executed if either:
+  1. The command string changes, or
+  2. The contents of any files matching the glob patterns change
+  
+  **Important:** When using memoization with build commands, the build outputs will not be produced if the command is memoized. Consider disabling memoization in CI environments.
+  
+  **Default:** `false`
+</ParamField>
+
+<ParamField path="cwd" type="string">
+  Working directory for the command.
+</ParamField>
+
+<ParamField path="env" type="Record<string, string | Secret<string> | undefined>">
+  Environment variables to set. Supports Secret values for sensitive data.
+</ParamField>
+
+<ParamField path="inheritStdio" type="boolean">
+  Whether to inherit stdio from parent process. When `true`, command output is displayed in real-time. When `false`, output is captured and available in the return value.
+  
+  **Default:** `true`
+</ParamField>
+
+### Returns
+
+<ResponseField name="id" type="string">
+  Unique identifier for this execution.
+</ResponseField>
+
+<ResponseField name="exitCode" type="number">
+  Exit code of the command.
+</ResponseField>
+
+<ResponseField name="stdout" type="string">
+  Standard output from the command (only available when `inheritStdio` is `false`).
+</ResponseField>
+
+<ResponseField name="stderr" type="string">
+  Standard error from the command (only available when `inheritStdio` is `false`).
+</ResponseField>
+
+<ResponseField name="executedAt" type="number">
+  Timestamp when the command was executed.
+</ResponseField>
+
+<ResponseField name="completed" type="boolean">
+  Whether the command has completed execution.
+</ResponseField>
+
+<ResponseField name="hash" type="string">
+  Hash of the command inputs (when using memoization with patterns).
+</ResponseField>
+
+### Examples
+
+#### Run a simple command
+
+```typescript
+const result = await Exec("list-files", {
+  command: "ls -la"
+});
+
+console.log(result.exitCode); // 0
+```
+
+#### Capture command output
+
+```typescript
+const result = await Exec("get-git-status", {
+  command: "git status",
+  inheritStdio: false
+});
+
+console.log(result.stdout);
+```
+
+#### Run command in specific directory
+
+```typescript
+const build = await Exec("build-project", {
+  command: "npm run build",
+  cwd: "./my-project",
+  env: { NODE_ENV: "production" }
+});
+```
+
+#### Use secrets in environment
+
+```typescript
+import alchemy from "alchemy";
+
+const deploy = await Exec("deploy-app", {
+  command: "npm run deploy",
+  env: {
+    NODE_ENV: "production",
+    API_KEY: alchemy.secret.env.API_KEY,
+    DATABASE_URL: alchemy.secret.env.DATABASE_URL
+  }
+});
+```
+
+#### Memoize a command
+
+```typescript
+const memoizedCmd = await Exec("status-check", {
+  command: "git status",
+  memoize: true
+});
+
+// This won't actually run the command again if nothing has changed
+await Exec("status-check", {
+  command: "git status",
+  memoize: true
+});
+```
+
+#### Memoize with file patterns
+
+```typescript
+// Memoize a build command based on source files
+const build = await Exec("build", {
+  command: "vite build",
+  memoize: {
+    patterns: ["./src/**", "./package.json"]
+  }
+});
+
+// Re-runs only if src files or package.json changes
+```
+
+#### Disable memoization in CI
+
+```typescript
+// Ensure build outputs are always produced in CI
+const build = await Exec("build", {
+  command: "vite build",
+  memoize: process.env.CI ? false : {
+    patterns: ["./src/**"]
+  }
+});
+```
+
+#### Database migration example
+
+```typescript
+// Safe to memoize since migrations are idempotent
+const migrate = await Exec("db-migrate", {
+  command: "drizzle-kit push:pg",
+  memoize: {
+    patterns: ["./src/db/schema/**"]
+  },
+  env: {
+    DATABASE_URL: alchemy.secret.env.DATABASE_URL
+  }
+});
+```
+
+---
+
+## exec() Function
+
+Lower-level function to execute shell commands. Unlike the `Exec` resource, this is a one-time execution that doesn't persist state.
+
+### Syntax
+
+```typescript
+function exec(
+  command: string,
+  options?: ExecOptions
+): Promise<{ stdout: string; stderr: string } | undefined>
+```
+
+### Parameters
+
+<ParamField path="command" type="string" required>
+  The command to execute.
+</ParamField>
+
+<ParamField path="options" type="ExecOptions">
+  Options for the command execution:
+  - `captureOutput`: Whether to capture stdout and stderr (default: `false`)
+  - `cwd`: Working directory
+  - `env`: Environment variables
+  - All Node.js `SpawnOptions`
+</ParamField>
+
+### Returns
+
+If `captureOutput` is `true`, returns `{ stdout: string, stderr: string }`. Otherwise, returns `undefined`.
+
+### Examples
+
+#### Execute with inherited stdio
+
+```typescript
+import { exec } from "alchemy/os";
+
+// Output goes directly to console
+await exec("npm install");
+```
+
+#### Capture output
+
+```typescript
+import { exec } from "alchemy/os";
+
+const { stdout, stderr } = await exec("git status", {
+  captureOutput: true
+});
+
+console.log("Git status:", stdout);
+```
+
+#### Custom working directory and environment
+
+```typescript
+import { exec } from "alchemy/os";
+
+await exec("npm test", {
+  cwd: "./my-project",
+  env: {
+    NODE_ENV: "test",
+    CI: "true"
+  }
+});
+```
+
+---
+
+## Best Practices
+
+### Memoization Guidelines
+
+1. **Use for expensive operations**: Memoize commands that are slow or resource-intensive (builds, tests, etc.)
+
+2. **Track the right files**: Include all files that affect the command output in your patterns
+
+```typescript
+// Good: Tracks all relevant files
+const build = await Exec("build", {
+  command: "tsc",
+  memoize: {
+    patterns: [
+      "./src/**/*.ts",
+      "./tsconfig.json",
+      "./package.json"
+    ]
+  }
+});
+```
+
+3. **Disable in CI**: Prevent memoization in CI to ensure fresh builds
+
+```typescript
+const build = await Exec("build", {
+  command: "npm run build",
+  memoize: process.env.CI ? false : {
+    patterns: ["./src/**"]
+  }
+});
+```
+
+4. **Only memoize idempotent commands**: Commands that can be safely run multiple times with the same result
+
+```typescript
+// Good: Migrations are idempotent
+const migrate = await Exec("migrate", {
+  command: "prisma migrate deploy",
+  memoize: { patterns: ["./prisma/schema.prisma"] }
+});
+
+// Bad: Deploy commands are not idempotent
+const deploy = await Exec("deploy", {
+  command: "vercel deploy",
+  memoize: true  // Don't do this!
+});
+```
+
+### Security Best Practices
+
+1. **Always use Secrets for sensitive data**:
+
+```typescript
+// Good: Using secrets
+const deploy = await Exec("deploy", {
+  command: "deploy.sh",
+  env: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+// Bad: Plain text secrets
+const deploy = await Exec("deploy", {
+  command: "deploy.sh",
+  env: {
+    API_KEY: process.env.API_KEY  // Not encrypted!
+  }
+});
+```
+
+2. **Validate command strings**: Be careful with user input in commands
+
+```typescript
+// Good: Validated input
+const validBranch = branch.match(/^[a-zA-Z0-9-_]+$/) ? branch : "main";
+const checkout = await Exec("checkout", {
+  command: `git checkout ${validBranch}`
+});
+
+// Bad: Unvalidated input (command injection risk)
+const checkout = await Exec("checkout", {
+  command: `git checkout ${userInput}`
+});
+```

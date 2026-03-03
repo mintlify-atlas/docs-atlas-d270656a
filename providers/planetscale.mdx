@@ -1,0 +1,123 @@
+---
+title: PlanetScale provider
+description: MySQL-compatible serverless database with branching and autoscaling
+---
+
+The PlanetScale provider enables you to create and manage MySQL-compatible serverless databases with Git-like branching, zero-downtime migrations, and autoscaling.
+
+## Installation
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Create a service token at [app.planetscale.com](https://app.planetscale.com) and set environment variables:
+
+```bash
+export PLANETSCALE_ORG="your-org"
+export PLANETSCALE_SERVICE_TOKEN_ID="your-token-id"
+export PLANETSCALE_SERVICE_TOKEN="your-token"
+```
+
+## Available resources
+
+- **Database** - PlanetScale MySQL database
+- **Branch** - Database branch for development
+- **Password** - Database credentials
+
+## Example usage
+
+```typescript
+import alchemy from "alchemy";
+import { Database, Branch, Password } from "alchemy/planetscale";
+
+const app = await alchemy("planetscale-app");
+
+// Create a PlanetScale database
+const database = await Database("db", {
+  name: "my-database",
+  region: "us-east",
+});
+
+// Create a development branch
+const devBranch = await Branch("dev", {
+  database,
+  name: "development",
+  parentBranch: "main",
+});
+
+// Create credentials
+const password = await Password("credentials", {
+  database,
+  branch: devBranch,
+  name: "app-credentials",
+});
+
+console.log(`Database URL: ${password.connectionString}`);
+
+await app.finalize();
+```
+
+## Database branching workflow
+
+PlanetScale's branching model enables safe schema changes:
+
+```typescript
+// Production database
+const prod = await Database("prod-db", {
+  name: "production",
+});
+
+// Create a branch for schema changes
+const schemaBranch = await Branch("schema-updates", {
+  database: prod,
+  name: "add-user-table",
+  parentBranch: "main",
+});
+
+// After testing, merge via PlanetScale UI or API
+```
+
+## Use with Cloudflare Workers
+
+```typescript
+import { Database, Password } from "alchemy/planetscale";
+import { Worker } from "alchemy/cloudflare";
+
+const database = await Database("db", { name: "my-db" });
+const password = await Password("creds", {
+  database,
+  branch: "main",
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    DATABASE_URL: password.connectionString,
+  },
+});
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="PlanetScale API" icon="database" href="/api/databases/planetscale">
+    Complete API reference
+  </Card>
+  <Card title="Hyperdrive" icon="bolt" href="/api/cloudflare/hyperdrive">
+    Connection pooling for PlanetScale
+  </Card>
+</CardGroup>

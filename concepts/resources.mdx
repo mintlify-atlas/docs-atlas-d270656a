@@ -1,0 +1,384 @@
+---
+title: Resources
+description: Understanding Alchemy's resource system and how to create infrastructure components
+---
+
+# Resources
+
+Resources are the fundamental building blocks in Alchemy. Each resource represents a piece of infrastructure—whether it's a worker, database, storage bucket, or any other cloud service component.
+
+## What is a Resource?
+
+A resource in Alchemy is a TypeScript function that manages the complete lifecycle of an infrastructure component. Resources handle:
+
+- **Creation**: Provisioning new infrastructure
+- **Updates**: Applying configuration changes
+- **Deletion**: Cleaning up resources when no longer needed
+- **State tracking**: Maintaining resource state across deployments
+
+<Note>
+  All resources implement the same lifecycle pattern, making them composable and predictable regardless of the underlying provider.
+</Note>
+
+## Resource Anatomy
+
+Resources are defined using the `Resource()` function and follow a consistent structure:
+
+```typescript
+import { Resource } from "alchemy";
+import type { Context } from "alchemy";
+
+export interface MyResourceProps {
+  /**
+   * Name of the resource
+   * @default ${app}-${stage}-${id}
+   */
+  name?: string;
+  
+  /**
+   * Configuration property
+   */
+  property: string;
+}
+
+export interface MyResource extends Resource<"provider::MyResource"> {
+  id: string;
+  name: string;
+  property: string;
+}
+
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (
+    this: Context<MyResource>,
+    id: string,
+    props: MyResourceProps
+  ): Promise<MyResource> {
+    // Handle deletion
+    if (this.phase === "delete") {
+      // Clean up the resource
+      return this.destroy();
+    }
+
+    // Create or update the resource
+    return {
+      id,
+      name: props.name ?? this.scope.createPhysicalName(id),
+      property: props.property,
+    };
+  }
+);
+```
+
+## Resource Identity
+
+Every resource has multiple forms of identity:
+
+### Logical ID
+
+The first parameter passed to a resource is its **logical ID**—a unique identifier within your application:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts"
+});
+```
+
+Here, `"api"` is the logical ID.
+
+<Warning>
+  Changing a resource's logical ID creates a new resource and deletes the old one. This can lead to data loss for stateful resources.
+</Warning>
+
+### Fully Qualified Name (FQN)
+
+The FQN is the complete path to a resource, including the app name, scopes, and logical ID:
+
+```
+my-app/dev/api
+my-app/prod/database/primary
+```
+
+Access via `resource[ResourceFQN]`:
+
+```typescript
+import { ResourceFQN } from "alchemy";
+
+console.log(worker[ResourceFQN]); // "my-app/dev/api"
+```
+
+### Physical Name
+
+The physical name is what appears in your cloud provider's console. Alchemy generates deterministic names by default:
+
+```typescript
+const name = this.scope.createPhysicalName(id);
+// Returns: "my-app-api-dev"
+```
+
+<Tip>
+  Physical names are designed to be human-readable while avoiding conflicts across stages and applications.
+</Tip>
+
+## Resource Lifecycle
+
+Resources go through distinct phases during deployment:
+
+### Create Phase
+
+When a resource doesn't exist in state:
+
+```typescript
+if (this.phase === "create") {
+  // this.output is undefined
+  // Create brand new infrastructure
+  const result = await api.create(props);
+  return result;
+}
+```
+
+### Update Phase
+
+When a resource exists but props have changed:
+
+```typescript
+if (this.phase === "update") {
+  // this.output contains previous state
+  // this.props contains previous props
+  const result = await api.update(this.output.id, props);
+  return result;
+}
+```
+
+### Delete Phase
+
+When a resource is removed from your code:
+
+```typescript
+if (this.phase === "delete") {
+  // Clean up infrastructure
+  await api.delete(this.output.id);
+  return this.destroy();
+}
+```
+
+<Info>
+  The `this.destroy()` call is required in the delete phase—it signals Alchemy that cleanup is complete and state should be removed.
+</Info>
+
+## Resource Context
+
+The `this` context in a resource handler provides access to:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `this.phase` | `"create" \| "update" \| "delete"` | Current lifecycle phase |
+| `this.output` | `Resource \| undefined` | Previous resource state (undefined in create) |
+| `this.props` | `Props \| undefined` | Previous props (undefined in create) |
+| `this.scope` | `Scope` | Current scope with app/stage info |
+| `this.id` | `string` | Logical ID of the resource |
+| `this.fqn` | `string` | Fully qualified name |
+| `this.get(key)` | `Promise<T>` | Get custom state data |
+| `this.set(key, value)` | `Promise<void>` | Set custom state data |
+| `this.replace()` | `never` | Signal resource replacement |
+| `this.destroy()` | `never` | Complete deletion |
+
+## Resource Properties
+
+Every Alchemy resource has these built-in properties:
+
+```typescript
+import { ResourceKind, ResourceID, ResourceFQN } from "alchemy";
+
+const worker = await Worker("api", { ... });
+
+console.log(worker[ResourceKind]);  // "cloudflare::Worker"
+console.log(worker[ResourceID]);    // "api"
+console.log(worker[ResourceFQN]);   // "my-app/dev/api"
+```
+
+<Note>
+  These symbols are used internally for type discrimination and resource tracking. You typically don't need to access them directly.
+</Note>
+
+## Resource Dependencies
+
+Resources can reference each other, creating automatic dependency graphs:
+
+```typescript
+const database = await D1Database("db", {
+  name: "my-database"
+});
+
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    DB: database  // Worker depends on database
+  }
+});
+```
+
+Alchemy automatically:
+- Creates resources in dependency order
+- Updates dependent resources when dependencies change
+- Deletes resources in reverse dependency order
+
+## Resource Replacement
+
+Some property changes require replacing a resource:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    if (this.phase === "update" && this.output.name !== props.name) {
+      // Name is immutable - trigger replacement
+      return this.replace();
+    }
+
+    // ... rest of implementation
+  }
+);
+```
+
+<Steps>
+  <Step title="Alchemy creates the new resource">
+    A new resource is created with the updated configuration
+  </Step>
+  <Step title="Alchemy deletes the old resource">
+    Once the new resource is ready, the old one is destroyed
+  </Step>
+  <Step title="State is updated">
+    State files are updated to track the new resource
+  </Step>
+</Steps>
+
+<Warning>
+  Replacement causes downtime for the resource. Plan accordingly for production systems.
+</Warning>
+
+## Type Safety
+
+Alchemy provides full TypeScript type safety:
+
+```typescript
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  bindings: {
+    // TypeScript knows DB must be a D1Database
+    DB: database
+  }
+});
+
+// TypeScript knows worker.url is a string
+console.log(worker.url);
+
+// TypeScript error: Property 'invalid' does not exist
+console.log(worker.invalid);
+```
+
+## Custom State
+
+Resources can store custom data in state:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    // Store custom data
+    await this.set("deploymentCount", 
+      (await this.get<number>("deploymentCount") ?? 0) + 1
+    );
+
+    const count = await this.get<number>("deploymentCount");
+    console.log(`Deployed ${count} times`);
+
+    // ... rest of implementation
+  }
+);
+```
+
+<Tip>
+  Custom state is useful for tracking metadata that doesn't belong in the resource's output but needs to persist across deployments.
+</Tip>
+
+## Local Development
+
+Resources can provide local alternatives for development:
+
+```typescript
+export const MyResource = Resource(
+  "provider::MyResource",
+  async function (this: Context<MyResource>, id: string, props: MyResourceProps) {
+    if (this.scope.local) {
+      // Return mock/local version
+      return {
+        id,
+        name: props.name || id,
+        url: "http://localhost:8787"
+      };
+    }
+
+    // Production implementation
+    // ...
+  }
+);
+```
+
+Run with local mode:
+
+```bash
+bun ./alchemy.run.ts --local
+```
+
+## Resource Registration
+
+Resources are automatically registered in a global registry when defined:
+
+```typescript
+import { PROVIDERS } from "alchemy";
+
+// Get a provider by type
+const provider = PROVIDERS.get("cloudflare::Worker");
+```
+
+<Info>
+  The global registry enables Alchemy to resolve resources during deletion even if the code has been removed.
+</Info>
+
+## Best Practices
+
+<Steps>
+  <Step title="Use descriptive logical IDs">
+    Choose IDs that clearly describe the resource's purpose: `"api"`, `"user-db"`, `"image-bucket"`
+  </Step>
+  <Step title="Handle all phases">
+    Always implement create, update, and delete logic comprehensively
+  </Step>
+  <Step title="Validate immutable properties">
+    Detect immutable property changes and call `this.replace()` when needed
+  </Step>
+  <Step title="Provide defaults">
+    Use `this.scope.createPhysicalName(id)` for default naming
+  </Step>
+  <Step title="Support local development">
+    Check `this.scope.local` and provide local alternatives when possible
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scopes" icon="folder-tree" href="/concepts/scopes">
+    Learn how to organize resources with scopes
+  </Card>
+  <Card title="State Management" icon="database" href="/concepts/state-management">
+    Understand how Alchemy tracks resource state
+  </Card>
+  <Card title="Secrets" icon="key" href="/concepts/secrets">
+    Secure sensitive values in your infrastructure
+  </Card>
+  <Card title="Lifecycle" icon="rotate" href="/concepts/lifecycle">
+    Deep dive into the resource lifecycle
+  </Card>
+</CardGroup>

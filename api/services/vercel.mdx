@@ -1,0 +1,205 @@
+---
+title: Vercel
+description: API reference for Vercel resources
+---
+
+# Vercel
+
+Manage Vercel projects, deployments, and environment variables.
+
+## Resources
+
+### Project
+
+Create and manage Vercel projects.
+
+<CodeGroup>
+```typescript Basic Project
+import { Project } from "alchemy/vercel";
+
+const project = await Project("my-app", {
+  name: "my-app",
+  framework: "astro"
+});
+```
+
+```typescript GitHub Integration
+import { Project } from "alchemy/vercel";
+
+const project = await Project("my-app", {
+  name: "my-app",
+  framework: "nextjs",
+  gitRepository: {
+    type: "github",
+    repo: "username/my-app"
+  }
+});
+```
+
+```typescript Environment Variables
+import { Project } from "alchemy/vercel";
+
+const project = await Project("my-app", {
+  name: "my-app",
+  environmentVariables: [
+    {
+      key: "PUBLIC_URL",
+      target: ["production", "preview", "development"],
+      value: "https://example.com"
+    },
+    {
+      key: "DATABASE_URL",
+      target: ["production", "preview"],
+      value: alchemy.secret("DATABASE_URL")
+    }
+  ]
+});
+```
+
+```typescript Custom Build Settings
+import { Project } from "alchemy/vercel";
+
+const project = await Project("my-app", {
+  name: "my-app",
+  buildCommand: "npm run build",
+  outputDirectory: "dist",
+  installCommand: "npm install",
+  devCommand: "npm run dev"
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The desired name for the project (Maximum length: 100)
+</ParamField>
+
+<ParamField path="framework" type="string">
+  The framework that is being used for this project. Supported frameworks include:
+  - `nextjs`, `react-router`, `astro`, `vite`, `remix`, `gatsby`
+  - `svelte`, `sveltekit`, `vue`, `nuxtjs`, `angular`
+  - `solidstart`, `hydrogen`, `docusaurus`
+  - And many more...
+</ParamField>
+
+<ParamField path="gitRepository" type="object">
+  The Git Repository that will be connected to the project
+  <Expandable>
+    <ParamField path="type" type="'github' | 'gitlab' | 'bitbucket'">
+      The Git Provider of the repository
+    </ParamField>
+    <ParamField path="repo" type="string">
+      The name of the git repository (e.g., "vercel/next.js")
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="environmentVariables" type="array">
+  Collection of environment variables the project will use
+  <Expandable>
+    <ParamField path="key" type="string">
+      The key of the environment variable
+    </ParamField>
+    <ParamField path="value" type="string | Secret">
+      The value of the environment variable
+    </ParamField>
+    <ParamField path="target" type="array">
+      The target environment(s): "production", "preview", "development"
+    </ParamField>
+    <ParamField path="type" type="'encrypted' | 'plain' | 'sensitive'">
+      The type of environment variable (auto-detected if not specified)
+    </ParamField>
+    <ParamField path="gitBranch" type="string">
+      The Git branch
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="buildCommand" type="string">
+  The build command for this project. When `null` is used this value will be automatically detected
+</ParamField>
+
+<ParamField path="devCommand" type="string">
+  The dev command for this project. When `null` is used this value will be automatically detected
+</ParamField>
+
+<ParamField path="installCommand" type="string">
+  The install command for this project. When `null` is used this value will be automatically detected
+</ParamField>
+
+<ParamField path="outputDirectory" type="string">
+  The output directory of the build. When `null` is used this value will be automatically detected
+</ParamField>
+
+<ParamField path="rootDirectory" type="string">
+  The name of a directory or relative path to the source code of your project. When `null` is used it will default to the project root
+</ParamField>
+
+<ParamField path="publicSource" type="boolean">
+  Specifies whether the source code and logs of the deployments for this project should be public or not
+</ParamField>
+
+<ParamField path="serverlessFunctionRegion" type="string">
+  The region to deploy Serverless Functions in this project
+</ParamField>
+
+<ParamField path="enablePreviewFeedback" type="boolean">
+  Opt-in to preview toolbar on the project level
+</ParamField>
+
+<ParamField path="enableProductionFeedback" type="boolean">
+  Opt-in to production toolbar on the project level
+</ParamField>
+
+<ParamField path="resourceConfig" type="object">
+  Resource configuration
+  <Expandable>
+    <ParamField path="fluid" type="boolean">
+      Whether fluid is enabled
+    </ParamField>
+    <ParamField path="functionDefaultRegions" type="string[]">
+      Default regions for functions
+    </ParamField>
+    <ParamField path="functionDefaultTimeout" type="number">
+      Default timeout for functions
+    </ParamField>
+    <ParamField path="functionDefaultMemoryType" type="'standard_legacy' | 'standard' | 'performance'">
+      Default memory type for functions
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The ID of the project
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name for the project
+</ResponseField>
+
+<ResponseField name="accountId" type="string">
+  The account ID that the project belongs to
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  The time at which the project was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="number">
+  The time at which the project was last updated
+</ResponseField>
+
+<ResponseField name="latestDeployment" type="object">
+  The latest deployment of the project
+  <Expandable>
+    <ResponseField name="id" type="string">
+      The ID of the deployment
+    </ResponseField>
+    <ResponseField name="url" type="string">
+      The URL of the deployment
+    </ResponseField>
+  </Expandable>
+</ResponseField>

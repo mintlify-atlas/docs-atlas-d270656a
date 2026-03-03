@@ -1,0 +1,99 @@
+---
+title: Prisma Postgres
+description: API reference for Prisma Postgres database resources
+---
+
+# Prisma Postgres
+
+Prisma Postgres is a fully managed PostgreSQL database service designed for serverless applications.
+
+## Resources
+
+### Database
+
+Creates and manages Prisma Postgres databases.
+
+<CodeGroup>
+```typescript Basic Database
+import { Project, Database } from "alchemy/prisma-postgres";
+
+const project = await Project("my-app");
+const database = await Database("my-database", {
+  project: project
+});
+```
+
+```typescript Regional Database
+import { Project, Database } from "alchemy/prisma-postgres";
+
+const project = await Project("my-app");
+const database = await Database("my-database", {
+  project: project,
+  region: "ap-northeast-1"
+});
+```
+
+```typescript Database with Deletion
+import { Project, Database } from "alchemy/prisma-postgres";
+
+const project = await Project("my-app");
+const database = await Database("my-database", {
+  project: project,
+  delete: true
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="project" type="Project | string" required>
+  The project to create the database in. Can be a Project object or project ID string.
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name of the database
+</ParamField>
+
+<ParamField path="region" type="string">
+  The region to create the database in. Available regions:
+  - `us-east-1`
+  - `us-west-1`
+  - `eu-west-3`
+  - `eu-central-1`
+  - `ap-northeast-1`
+  - `ap-southeast-1`
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="false">
+  Whether to delete the database if the resource is deleted
+</ParamField>
+
+<ParamField path="serviceToken" type="Secret">
+  The service token to use for the API
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The Prisma ID of the database
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the database
+</ResponseField>
+
+<ResponseField name="status" type="'failure' | 'provisioning' | 'ready' | 'recovering'">
+  The status of the database
+</ResponseField>
+
+<ResponseField name="region" type="string">
+  The region of the database
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  The timestamp of the database creation
+</ResponseField>
+
+<ResponseField name="project" type="string">
+  The Prisma ID of the project the database belongs to
+</ResponseField>

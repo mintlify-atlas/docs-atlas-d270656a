@@ -1,0 +1,346 @@
+---
+title: Nuxt on Cloudflare
+description: Deploy a Nuxt application to Cloudflare with R2 and Pipeline integration
+---
+
+# Nuxt on Cloudflare Example
+
+This example demonstrates deploying a Nuxt application to Cloudflare with R2 Bucket storage and Pipeline for analytics.
+
+## Features
+
+- **Nuxt**: Vue.js meta-framework with SSR
+- **R2 Bucket**: Object storage for data
+- **Pipeline**: Analytics and data pipeline to R2
+- **Type Safety**: Full TypeScript support
+- **Edge Rendering**: Server-side rendering at the edge
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install nuxt
+```
+
+### Create alchemy.run.ts
+
+Create infrastructure with R2 and Pipeline:
+
+```ts
+import alchemy from "alchemy";
+import { Nuxt, Pipeline, R2Bucket } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-nuxt-pipeline");
+
+const bucket = await R2Bucket("bucket", {
+  name: `${app.name}-${app.stage}-bucket`,
+  adopt: true,
+  empty: true,
+});
+
+const pipeline = await Pipeline("pipeline", {
+  name: `${app.name}-${app.stage}-pipeline`,
+  adopt: true,
+  source: [{ type: "binding", format: "json" }],
+  destination: {
+    type: "r2",
+    format: "json",
+    path: { bucket: bucket.name },
+    credentials: {
+      accessKeyId: alchemy.secret(process.env.R2_ACCESS_KEY_ID),
+      secretAccessKey: alchemy.secret(process.env.R2_SECRET_ACCESS_KEY),
+    },
+    batch: {
+      maxMb: 10,
+      maxSeconds: 5,
+      maxRows: 100,
+    },
+  },
+});
+
+export const website = await Nuxt("website", {
+  name: `${app.name}-${app.stage}-website`,
+  adopt: true,
+  bindings: {
+    R2_BUCKET: bucket,
+    PIPELINE: pipeline,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Configure Nuxt
+
+Create `nuxt.config.ts`:
+
+```ts
+export default defineNuxtConfig({
+  compatibilityDate: '2024-03-03',
+  nitro: {
+    preset: 'cloudflare-pages',
+  },
+});
+```
+
+### Environment Types
+
+Create `types/cloudflare.d.ts`:
+
+```ts
+import type { website } from '../alchemy.run';
+
+declare module 'h3' {
+  interface H3EventContext {
+    cloudflare: {
+      env: typeof website.Env;
+    };
+  }
+}
+```
+
+### Create Server Routes
+
+Create `server/api/upload.post.ts`:
+
+```ts
+export default defineEventHandler(async (event) => {
+  const env = event.context.cloudflare.env;
+  
+  const formData = await readFormData(event);
+  const file = formData.get('file') as File;
+  
+  if (!file) {
+    throw createError({
+      statusCode: 400,
+      message: 'No file provided',
+    });
+  }
+  
+  // Upload to R2
+  const buffer = await file.arrayBuffer();
+  await env.R2_BUCKET.put(file.name, buffer);
+  
+  // Log to Pipeline for analytics
+  await env.PIPELINE.write({
+    event: 'file_upload',
+    filename: file.name,
+    size: file.size,
+    timestamp: new Date().toISOString(),
+  });
+  
+  return {
+    success: true,
+    filename: file.name,
+    size: file.size,
+  };
+});
+```
+
+### Create Analytics Route
+
+Create `server/api/analytics.get.ts`:
+
+```ts
+export default defineEventHandler(async (event) => {
+  const env = event.context.cloudflare.env;
+  
+  // List analytics files from R2
+  const list = await env.R2_BUCKET.list({ prefix: 'analytics/' });
+  
+  const events = [];
+  
+  for (const object of list.objects) {
+    const file = await env.R2_BUCKET.get(object.key);
+    if (file) {
+      const data = await file.json();
+      events.push(data);
+    }
+  }
+  
+  return { events };
+});
+```
+
+### Create Page Components
+
+Create `pages/index.vue`:
+
+```vue
+<template>
+  <div>
+    <h1>Nuxt on Cloudflare</h1>
+    
+    <div>
+      <h2>Upload File</h2>
+      <form @submit.prevent="uploadFile">
+        <input type="file" @change="handleFileChange" />
+        <button type="submit">Upload</button>
+      </form>
+      <p v-if="uploadStatus">{{ uploadStatus }}</p>
+    </div>
+    
+    <div>
+      <h2>Analytics</h2>
+      <button @click="loadAnalytics">Load Analytics</button>
+      <ul v-if="analytics.length">
+        <li v-for="event in analytics" :key="event.timestamp">
+          {{ event.event }} - {{ event.filename }} ({{ event.size }} bytes)
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+const file = ref<File | null>(null);
+const uploadStatus = ref('');
+const analytics = ref([]);
+
+const handleFileChange = (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  file.value = target.files?.[0] || null;
+};
+
+const uploadFile = async () => {
+  if (!file.value) return;
+  
+  const formData = new FormData();
+  formData.append('file', file.value);
+  
+  try {
+    const response = await $fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    uploadStatus.value = `Uploaded: ${response.filename}`;
+  } catch (error) {
+    uploadStatus.value = 'Upload failed';
+  }
+};
+
+const loadAnalytics = async () => {
+  const data = await $fetch('/api/analytics');
+  analytics.value = data.events;
+};
+</script>
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### R2 Bucket
+
+Create an R2 bucket for object storage:
+
+```ts
+const bucket = await R2Bucket("bucket", {
+  name: `${app.name}-${app.stage}-bucket`,
+  adopt: true,
+  empty: true,
+});
+```
+
+### Pipeline for Analytics
+
+Pipeline writes analytics data to R2:
+
+```ts
+const pipeline = await Pipeline("pipeline", {
+  source: [{ type: "binding", format: "json" }],
+  destination: {
+    type: "r2",
+    format: "json",
+    path: { bucket: bucket.name },
+    credentials: {
+      accessKeyId: alchemy.secret(process.env.R2_ACCESS_KEY_ID),
+      secretAccessKey: alchemy.secret(process.env.R2_SECRET_ACCESS_KEY),
+    },
+    batch: {
+      maxMb: 10,
+      maxSeconds: 5,
+      maxRows: 100,
+    },
+  },
+});
+```
+
+### Bindings in Nuxt
+
+Both R2 and Pipeline are available in server routes:
+
+```ts
+bindings: {
+  R2_BUCKET: bucket,
+  PIPELINE: pipeline,
+}
+```
+
+### Server-Side Access
+
+Access bindings in Nuxt server routes:
+
+```ts
+export default defineEventHandler(async (event) => {
+  const env = event.context.cloudflare.env;
+  await env.R2_BUCKET.put('key', 'value');
+  await env.PIPELINE.write({ event: 'data' });
+});
+```
+
+## Pipeline Batching
+
+Pipeline automatically batches writes based on:
+
+- **maxMb**: Maximum batch size in MB (10)
+- **maxSeconds**: Maximum time before flush (5 seconds)
+- **maxRows**: Maximum number of rows (100)
+
+```ts
+batch: {
+  maxMb: 10,
+  maxSeconds: 5,
+  maxRows: 100,
+}
+```
+
+## Analytics Query Example
+
+Query analytics data from R2:
+
+```ts
+const list = await env.R2_BUCKET.list({ prefix: 'analytics/' });
+for (const object of list.objects) {
+  const file = await env.R2_BUCKET.get(object.key);
+  const data = await file?.json();
+  // Process analytics data
+}
+```
+
+## Use Cases
+
+- **File Storage**: Upload and serve files from R2
+- **Analytics**: Track events with Pipeline
+- **Data Lakes**: Store structured data in R2
+- **Logging**: Batch logs to R2 via Pipeline
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-nuxt-pipeline](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-nuxt-pipeline)

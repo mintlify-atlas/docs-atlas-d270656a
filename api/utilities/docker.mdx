@@ -1,0 +1,471 @@
+---
+title: "Docker"
+description: "Manage Docker containers, images, networks, and volumes"
+---
+
+## Container
+
+Create and manage Docker containers with support for port mappings, volumes, networks, and healthchecks.
+
+### Properties
+
+<ParamField path="image" type="Image | RemoteImage | string" required>
+  Image to use for the container. Can be an Alchemy Image or RemoteImage resource or a string image reference.
+</ParamField>
+
+<ParamField path="name" type="string">
+  Container name.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="command" type="string[]">
+  Command to run in the container.
+</ParamField>
+
+<ParamField path="environment" type="Record<string, string | Secret>">
+  Environment variables for the container.
+</ParamField>
+
+<ParamField path="ports" type="PortMapping[]">
+  Port mappings between host and container.
+  
+  Each mapping has:
+  - `external`: Host port
+  - `internal`: Container port
+  - `protocol`: "tcp" or "udp" (optional)
+</ParamField>
+
+<ParamField path="volumes" type="VolumeMapping[]">
+  Volume mappings between host and container.
+  
+  Each mapping has:
+  - `hostPath`: Path on host
+  - `containerPath`: Path in container
+  - `readOnly`: Whether volume is read-only (optional)
+</ParamField>
+
+<ParamField path="restart" type="'no' | 'always' | 'on-failure' | 'unless-stopped'">
+  Restart policy for the container.
+</ParamField>
+
+<ParamField path="networks" type="NetworkMapping[]">
+  Networks to connect the container to.
+  
+  Each mapping has:
+  - `name`: Network name or ID
+  - `aliases`: Network aliases (optional)
+</ParamField>
+
+<ParamField path="removeOnExit" type="boolean">
+  Whether to remove the container when it exits.
+</ParamField>
+
+<ParamField path="start" type="boolean">
+  Start the container after creation.
+</ParamField>
+
+<ParamField path="healthcheck" type="HealthcheckConfig">
+  Healthcheck configuration with:
+  - `cmd`: Command to run (string or array)
+  - `interval`: Time between checks (Duration)
+  - `timeout`: Max time for check (Duration)
+  - `retries`: Consecutive failures needed
+  - `startPeriod`: Initialization time (Duration)
+  - `startInterval`: Check interval during start (Duration)
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  Whether to adopt the container if it already exists.
+  
+  **Default:** `false`
+</ParamField>
+
+### Returns
+
+<ResponseField name="id" type="string">
+  Container ID assigned by Docker.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Container name.
+</ResponseField>
+
+<ResponseField name="state" type="'created' | 'running' | 'paused' | 'stopped' | 'exited'">
+  Current state of the container.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Timestamp when the container was created.
+</ResponseField>
+
+<ResponseField name="inspect" type="() => Promise<ContainerRuntimeInfo>">
+  Function to inspect the container and get detailed runtime information including port mappings.
+</ResponseField>
+
+### Examples
+
+#### Create a simple Nginx container
+
+```typescript
+const webContainer = await Container("web", {
+  image: "nginx:latest",
+  ports: [
+    { external: 8080, internal: 80 }
+  ],
+  start: true
+});
+
+console.log(webContainer.id);
+console.log(webContainer.state); // "running"
+```
+
+#### Container with environment and volumes
+
+```typescript
+const appContainer = await Container("app", {
+  image: customImage,
+  environment: {
+    NODE_ENV: "production",
+    API_KEY: alchemy.secret.env.API_KEY
+  },
+  volumes: [
+    { hostPath: "./data", containerPath: "/app/data" }
+  ],
+  ports: [
+    { external: 3000, internal: 3000 }
+  ],
+  restart: "always",
+  start: true
+});
+```
+
+#### Container with healthcheck
+
+```typescript
+const apiContainer = await Container("api", {
+  image: "my-api:latest",
+  ports: [
+    { external: 3000, internal: 3000 }
+  ],
+  healthcheck: {
+    cmd: ["curl", "-f", "http://localhost:3000/health"],
+    interval: "30s",
+    timeout: "10s",
+    retries: 3,
+    startPeriod: "1m"
+  },
+  start: true
+});
+
+// Inspect container to get runtime info
+const info = await apiContainer.inspect();
+console.log(info.ports); // { "3000/tcp": 3000 }
+```
+
+---
+
+## Image
+
+Build and manage Docker images from Dockerfiles with support for multi-stage builds, build arguments, and registry push.
+
+### Properties
+
+<ParamField path="name" type="string">
+  Repository name for the image (e.g., "username/image").
+  
+  **Default:** The resource ID
+</ParamField>
+
+<ParamField path="tag" type="string">
+  Tag for the image (e.g., "latest").
+  
+  **Default:** `"latest"`
+</ParamField>
+
+<ParamField path="build" type="DockerBuildOptions">
+  Build configuration with:
+  - `context`: Build context directory
+  - `dockerfile`: Path to Dockerfile
+  - `platform`: Target platform (e.g., "linux/amd64")
+  - `args`: Build arguments
+  - `target`: Target build stage
+  - `cacheFrom`: Cache sources
+  - `cacheTo`: Cache destinations
+  - `options`: Additional Docker build options
+</ParamField>
+
+<ParamField path="image" type="string | Image | RemoteImage">
+  Image reference to tag (alternative to build).
+</ParamField>
+
+<ParamField path="registry" type="ImageRegistry">
+  Registry credentials for pushing:
+  - `username`: Registry username
+  - `password`: Registry password (Secret)
+  - `server`: Registry server URL
+</ParamField>
+
+<ParamField path="skipPush" type="boolean">
+  Whether to skip pushing the image to registry.
+  
+  **Default:** `false`
+</ParamField>
+
+### Returns
+
+<ResponseField name="name" type="string">
+  Image name.
+</ResponseField>
+
+<ResponseField name="imageRef" type="string">
+  Full image reference (name:tag).
+</ResponseField>
+
+<ResponseField name="imageId" type="string">
+  Docker image ID.
+</ResponseField>
+
+<ResponseField name="repoDigest" type="string">
+  Repository digest if pushed to registry.
+</ResponseField>
+
+<ResponseField name="builtAt" type="number">
+  Timestamp when the image was built.
+</ResponseField>
+
+### Examples
+
+#### Build an image from Dockerfile
+
+```typescript
+const appImage = await Image("app-image", {
+  name: "myapp",
+  tag: "latest",
+  build: {
+    context: "./app",
+    dockerfile: "Dockerfile",
+    args: {
+      NODE_ENV: "production"
+    }
+  }
+});
+
+console.log(appImage.imageRef); // "myapp:latest"
+```
+
+#### Build and push to registry
+
+```typescript
+const prodImage = await Image("prod-image", {
+  name: "mycompany/myapp",
+  tag: "v1.0.0",
+  build: {
+    context: ".",
+    platform: "linux/amd64"
+  },
+  registry: {
+    server: "ghcr.io",
+    username: "mycompany",
+    password: alchemy.secret.env.GITHUB_TOKEN
+  }
+});
+
+console.log(prodImage.repoDigest); // Registry digest
+```
+
+---
+
+## RemoteImage
+
+Pull and reference Docker images from remote registries.
+
+### Properties
+
+<ParamField path="name" type="string" required>
+  Docker image name (e.g., "nginx").
+</ParamField>
+
+<ParamField path="tag" type="string">
+  Tag for the image (e.g., "latest" or "1.19-alpine").
+  
+  **Default:** `"latest"`
+</ParamField>
+
+<ParamField path="alwaysPull" type="boolean">
+  Always attempt to pull the image, even if it exists locally.
+</ParamField>
+
+### Returns
+
+<ResponseField name="imageRef" type="string">
+  Full image reference (name:tag).
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Timestamp when the image was pulled.
+</ResponseField>
+
+### Examples
+
+```typescript
+const nginxImage = await RemoteImage("nginx", {
+  name: "nginx",
+  tag: "alpine"
+});
+
+const container = await Container("web", {
+  image: nginxImage,
+  start: true
+});
+```
+
+---
+
+## Network
+
+Create and manage Docker networks for container connectivity.
+
+### Properties
+
+<ParamField path="name" type="string">
+  Network name.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="driver" type="'bridge' | 'host' | 'none' | 'overlay' | 'macvlan' | string">
+  Network driver to use.
+  
+  **Default:** `"bridge"`
+</ParamField>
+
+<ParamField path="enableIPv6" type="boolean">
+  Enable IPv6 on the network.
+  
+  **Default:** `false`
+</ParamField>
+
+<ParamField path="labels" type="Record<string, string>">
+  Custom metadata labels for the network.
+</ParamField>
+
+### Returns
+
+<ResponseField name="id" type="string">
+  Network ID assigned by Docker.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Network name.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Timestamp when the network was created.
+</ResponseField>
+
+### Examples
+
+```typescript
+const appNetwork = await Network("app-network", {
+  name: "app-network",
+  driver: "bridge"
+});
+
+const container1 = await Container("api", {
+  image: "api:latest",
+  networks: [{ name: appNetwork.name }]
+});
+
+const container2 = await Container("worker", {
+  image: "worker:latest",
+  networks: [{ name: appNetwork.name, aliases: ["task-worker"] }]
+});
+```
+
+---
+
+## Volume
+
+Create and manage Docker volumes for persistent data storage.
+
+### Properties
+
+<ParamField path="name" type="string">
+  Volume name.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="driver" type="string">
+  Volume driver to use.
+  
+  **Default:** `"local"`
+</ParamField>
+
+<ParamField path="driverOpts" type="Record<string, string>">
+  Driver-specific options (e.g., NFS configuration).
+</ParamField>
+
+<ParamField path="labels" type="VolumeLabel[] | Record<string, string>">
+  Custom metadata labels for the volume.
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  Whether to adopt the volume if it already exists.
+  
+  **Default:** `false`
+</ParamField>
+
+### Returns
+
+<ResponseField name="id" type="string">
+  Volume ID (same as name for Docker volumes).
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Volume name.
+</ResponseField>
+
+<ResponseField name="mountpoint" type="string">
+  Volume mountpoint path on the host.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Timestamp when the volume was created.
+</ResponseField>
+
+### Examples
+
+#### Simple volume
+
+```typescript
+const dataVolume = await Volume("data-volume", {
+  name: "data-volume"
+});
+
+const container = await Container("app", {
+  image: "myapp:latest",
+  volumes: [
+    { hostPath: dataVolume.name, containerPath: "/app/data" }
+  ]
+});
+```
+
+#### NFS volume
+
+```typescript
+const dbVolume = await Volume("db-data", {
+  name: "db-data",
+  driver: "local",
+  driverOpts: {
+    "type": "nfs",
+    "o": "addr=10.0.0.1,rw",
+    "device": ":/path/to/dir"
+  },
+  labels: {
+    "com.example.usage": "database-storage",
+    "com.example.backup": "weekly"
+  }
+});
+```

@@ -1,0 +1,176 @@
+---
+title: Next.js
+description: Deploy Next.js applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [Next.js](https://nextjs.org/) applications to Cloudflare Workers using the OpenNext Cloudflare adapter.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy next @opennextjs/cloudflare
+```
+
+## Configuration
+
+<Steps>
+
+### Add wrangler.jsonc to .gitignore
+
+Add `wrangler.jsonc` to your `.gitignore` file:
+
+```
+.open-next/
+wrangler.jsonc
+```
+
+This file is auto-generated and should not be committed.
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { D1Database, KVNamespace, Nextjs } from "alchemy/cloudflare";
+
+const app = await alchemy("my-nextjs-app");
+
+const [db, cache] = await Promise.all([
+  D1Database("database", {
+    name: `${app.name}-${app.stage}-db`,
+  }),
+  KVNamespace("cache", {
+    title: `${app.name}-${app.stage}-cache`,
+  }),
+]);
+
+const website = await Nextjs("website", {
+  bindings: {
+    DB: db,
+    CACHE: cache,
+    API_SECRET: alchemy.secret.env.API_SECRET,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`build`**: Build command override
+  - Default: `opennextjs-cloudflare build`
+- **`dev`**: Dev command override
+  - Default: `next dev`
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `.open-next/worker.js`
+- **`assets`**: Static assets directory
+  - Default: `.open-next/assets`
+- **`noBundle`**: Skip bundling (useful for debugging)
+  - Default: `false`
+
+## Build Configuration
+
+The Next.js resource automatically:
+
+- Runs OpenNext Cloudflare build
+- Bundles the worker with minification
+- Sets `nodejs_compat` compatibility flag
+- Configures environment variables
+
+### Custom Build Command
+
+```ts
+const website = await Nextjs("website", {
+  build: {
+    command: "npm run build:cloudflare",
+    env: {
+      NEXTJS_ENV: "production",
+    },
+  },
+});
+```
+
+## Development Server
+
+Customize the development server configuration:
+
+```ts
+const website = await Nextjs("website", {
+  dev: {
+    command: "next dev --port 3001",
+    domain: "localhost:3001",
+    env: {
+      NEXTJS_ENV: "development",
+    },
+  },
+});
+```
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your Next.js app using the platform env:
+
+```ts
+import { getRequestContext } from '@opennextjs/cloudflare';
+
+export async function GET(request: Request) {
+  const { env } = await getRequestContext();
+  const db = env.DB;
+  const result = await db.prepare("SELECT * FROM users").all();
+  
+  return Response.json(result);
+}
+```
+
+## Compatibility Flags
+
+The Next.js resource automatically sets:
+
+- `nodejs_compat` - Node.js compatibility
+- `global_fetch_strictly_public` - Fetch API compatibility
+
+Add additional flags:
+
+```ts
+const website = await Nextjs("website", {
+  compatibilityFlags: ["streams_enable_constructors"],
+});
+```
+
+## Limitations
+
+- Not all Next.js features are supported on Cloudflare Workers
+- Consult the [OpenNext Cloudflare documentation](https://opennext.js.org/cloudflare) for current limitations
+- Some Node.js APIs may not be available
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [Worker](/resources/cloudflare/worker) - Cloudflare Workers deployment
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database

@@ -1,0 +1,192 @@
+---
+title: Cloudflare provider
+description: Deploy Workers, Durable Objects, databases, and edge infrastructure on Cloudflare
+---
+
+The Cloudflare provider enables you to deploy and manage Cloudflare Workers, Durable Objects, databases, storage, and other edge infrastructure using TypeScript.
+
+## Installation
+
+The Cloudflare provider is included in the main `alchemy` package:
+
+<CodeGroup>
+```bash npm
+npm install alchemy
+```
+```bash yarn
+yarn add alchemy
+```
+```bash pnpm
+pnpm add alchemy
+```
+```bash bun
+bun add alchemy
+```
+</CodeGroup>
+
+## Credentials
+
+Set up your Cloudflare credentials as environment variables:
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-api-token"
+export CLOUDFLARE_ACCOUNT_ID="your-account-id"
+```
+
+<Tip>
+Create an API token at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) with the **Edit Cloudflare Workers** template.
+</Tip>
+
+## Available resources
+
+### Compute
+
+- **[Worker](/api/cloudflare/worker)** - Deploy JavaScript/TypeScript Workers
+- **[DurableObjectNamespace](/api/cloudflare/durable-object)** - Stateful compute with strong consistency
+- **[Workflow](/api/cloudflare/workflow)** - Orchestrate long-running tasks
+- **[Container](/api/cloudflare/container)** - Deploy containerized applications
+
+### Storage
+
+- **[R2Bucket](/api/cloudflare/r2-bucket)** - Object storage compatible with S3
+- **[KVNamespace](/api/cloudflare/kv-namespace)** - Low-latency key-value storage
+- **[D1Database](/api/cloudflare/d1-database)** - Serverless SQLite databases
+- **[Vectorize](/api/cloudflare/vectorize)** - Vector database for AI applications
+
+### Messaging & Queues
+
+- **[Queue](/api/cloudflare/queue)** - Message queues for async processing
+- **DispatchNamespace** - RPC between Workers
+
+### AI & ML
+
+- **[AiSearch](/api/cloudflare/ai-search)** - RAG and semantic search
+- **Ai** - Access Cloudflare AI models
+
+### Networking
+
+- **[CustomDomain](/api/cloudflare/custom-domain)** - Custom domains for Workers
+- **[Hyperdrive](/api/cloudflare/hyperdrive)** - Database connection pooling
+- **Tunnel** - Secure tunnels to your origin
+- **Route** - HTTP routing rules
+
+### Security
+
+- **ApiShield** - API security and validation
+- **RateLimit** - Rate limiting rules
+
+## Example usage
+
+Here's a complete example deploying a Worker with Durable Objects, R2 storage, and a Queue:
+
+```typescript
+import alchemy from "alchemy";
+import {
+  Worker,
+  DurableObjectNamespace,
+  R2Bucket,
+  Queue,
+  D1Database,
+} from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-app");
+
+// Storage
+const bucket = await R2Bucket("storage", {
+  name: `${app.name}-${app.stage}-storage`,
+});
+
+const db = await D1Database("db", {
+  name: `${app.name}-${app.stage}-db`,
+});
+
+// Queue for async processing
+const queue = await Queue<{ userId: string; action: string }>("tasks", {
+  name: `${app.name}-${app.stage}-tasks`,
+});
+
+// Durable Object for stateful compute
+const sessions = await DurableObjectNamespace("sessions", {
+  className: "SessionManager",
+  script: "./src/durable-objects.ts",
+});
+
+// Worker
+const worker = await Worker("api", {
+  name: `${app.name}-${app.stage}-api`,
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    BUCKET: bucket,
+    DB: db,
+    QUEUE: queue,
+    SESSIONS: sessions,
+  },
+  url: true, // Enable workers.dev subdomain
+  eventSources: [
+    {
+      queue,
+      settings: {
+        batchSize: 10,
+        maxWaitTimeMs: 5000,
+      },
+    },
+  ],
+});
+
+console.log(`Worker URL: ${worker.url}`);
+
+await app.finalize();
+```
+
+## Local development
+
+Cloudflare resources support local development mode using Miniflare:
+
+```typescript
+const app = await alchemy("my-app", {
+  local: true, // Enable local mode
+});
+
+// Resources run locally with Miniflare
+const worker = await Worker("worker", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    // Local bindings work the same way
+  },
+});
+
+// Access via localhost
+console.log(`Local URL: http://localhost:${worker.port}`);
+```
+
+See the [Local Development guide](/guides/local-development) for more details.
+
+## Framework integrations
+
+Alchemy provides plugins for popular web frameworks:
+
+- **[Vite](/integrations/vite)** - Deploy Vite applications
+- **[Astro](/integrations/astro)** - Deploy Astro sites
+- **[Next.js](/integrations/nextjs)** - Deploy Next.js applications
+- **[Nuxt](/integrations/nuxt)** - Deploy Nuxt applications
+- **[SvelteKit](/integrations/sveltekit)** - Deploy SvelteKit apps
+- **[React Router](/integrations/react-router)** - Deploy React Router v7
+- **[RedwoodJS](/integrations/redwood)** - Deploy Redwood applications
+- **[TanStack Start](/integrations/tanstack-start)** - Deploy TanStack Start apps
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Worker API" icon="code" href="/api/cloudflare/worker">
+    Deploy Cloudflare Workers
+  </Card>
+  <Card title="Durable Objects" icon="database" href="/api/cloudflare/durable-object">
+    Stateful serverless compute
+  </Card>
+  <Card title="Examples" icon="book-open" href="/examples/cloudflare-worker">
+    Browse Cloudflare examples
+  </Card>
+  <Card title="Framework integrations" icon="puzzle-piece" href="/integrations/vite">
+    Deploy web frameworks
+  </Card>
+</CardGroup>

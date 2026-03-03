@@ -1,0 +1,215 @@
+---
+title: R2Bucket
+description: API reference for Cloudflare R2 Bucket resource
+---
+
+# R2Bucket
+
+Creates and manages Cloudflare R2 Buckets for object storage with S3-compatible API.
+
+## Props
+
+<ParamField path="name" type="string">
+  Name of the bucket. Names can only contain lowercase letters (a-z), numbers (0-9), and hyphens (-).
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="locationHint" type="string">
+  Optional location hint for the bucket. Indicates the primary geographical location data will be accessed from.
+</ParamField>
+
+<ParamField path="storageClass" type="Standard | InfrequentAccess">
+  Optional storage class for the bucket.
+</ParamField>
+
+<ParamField path="jurisdiction" type="default | eu | fedramp">
+  Optional jurisdiction for the bucket. Determines the regulatory jurisdiction the bucket data falls under.
+</ParamField>
+
+<ParamField path="devDomain" type="boolean" default="false">
+  Whether to allow public access through the r2.dev subdomain. Only for development purposes - use custom domains for production.
+</ParamField>
+
+<ParamField path="domains" type="string | R2BucketCustomDomainOptions | (string | R2BucketCustomDomainOptions)[]">
+  The custom domain(s) to attach to the bucket.
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the bucket when the resource is removed from Alchemy.
+</ParamField>
+
+<ParamField path="empty" type="boolean" default="false">
+  Whether to empty the bucket and delete all objects during resource deletion.
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  Whether to adopt an existing bucket with the same name if it exists.
+</ParamField>
+
+<ParamField path="cors" type="R2BucketCORSRule[]">
+  CORS rules for the bucket.
+
+  <Expandable title="properties">
+    <ParamField path="allowed" type="object" required>
+      <Expandable title="properties">
+        <ParamField path="methods" type="string[]" required>
+          HTTP methods allowed. Options: `GET`, `PUT`, `POST`, `DELETE`, `HEAD`
+        </ParamField>
+
+        <ParamField path="origins" type="string[]" required>
+          Allowed origins for CORS requests.
+        </ParamField>
+
+        <ParamField path="headers" type="string[]">
+          Allowed headers for CORS requests.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="exposeHeaders" type="string[]">
+      Headers that can be exposed back to the client.
+    </ParamField>
+
+    <ParamField path="maxAgeSeconds" type="number">
+      Amount of time browsers are allowed to cache CORS preflight responses (in seconds).
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="lifecycle" type="R2BucketLifecycleRule[]">
+  Lifecycle rules for the bucket.
+
+  <Expandable title="properties">
+    <ParamField path="id" type="string">
+      Unique identifier for this rule.
+    </ParamField>
+
+    <ParamField path="enabled" type="boolean" default="true">
+      Whether or not this rule is in effect.
+    </ParamField>
+
+    <ParamField path="conditions" type="object">
+      <Expandable title="properties">
+        <ParamField path="prefix" type="string" required>
+          Transitions will only apply to objects/uploads that start with the given prefix.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="deleteObjectsTransition" type="object">
+      Transition to delete objects.
+
+      <Expandable title="properties">
+        <ParamField path="condition" type="object" required>
+          Age or date-based condition for deletion.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="storageClassTransitions" type="object[]">
+      Transitions to change the storage class of objects.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="dataCatalog" type="boolean">
+  Enable data catalog for bucket.
+</ParamField>
+
+## Output
+
+<ResponseField name="name" type="string">
+  The name of the bucket.
+</ResponseField>
+
+<ResponseField name="location" type="string">
+  Location of the bucket.
+</ResponseField>
+
+<ResponseField name="creationDate" type="Date">
+  Time at which the bucket was created.
+</ResponseField>
+
+<ResponseField name="devDomain" type="string">
+  The `r2.dev` subdomain for the bucket, if `devDomain` is true.
+</ResponseField>
+
+<ResponseField name="domains" type="string[]">
+  The custom domains for the bucket, if applicable.
+</ResponseField>
+
+<ResponseField name="type" type="r2_bucket">
+  Type identifier for the binding.
+</ResponseField>
+
+## Examples
+
+### Basic R2 Bucket
+
+```ts
+const bucket = await R2Bucket("storage", {
+  name: "my-app-data"
+});
+```
+
+### Bucket with Location Hint
+
+```ts
+const euBucket = await R2Bucket("eu-data", {
+  name: "eu-user-data",
+  locationHint: "eu",
+  jurisdiction: "eu"
+});
+```
+
+### Bucket with Public Access
+
+```ts
+const publicBucket = await R2Bucket("public-assets", {
+  name: "public-assets",
+  devDomain: true
+});
+```
+
+### Bucket with CORS
+
+```ts
+const bucket = await R2Bucket("api-storage", {
+  cors: [{
+    allowed: {
+      methods: ["GET", "PUT"],
+      origins: ["https://example.com"],
+      headers: ["Content-Type"]
+    },
+    exposeHeaders: ["ETag"],
+    maxAgeSeconds: 3600
+  }]
+});
+```
+
+### Bucket with Lifecycle Rules
+
+```ts
+const bucket = await R2Bucket("logs", {
+  lifecycle: [{
+    id: "delete-old-logs",
+    enabled: true,
+    conditions: { prefix: "logs/" },
+    deleteObjectsTransition: {
+      condition: { maxAge: 2592000, type: "Age" }
+    }
+  }]
+});
+```
+
+### Auto-Empty on Deletion
+
+```ts
+const tempBucket = await R2Bucket("temp-storage", {
+  name: "temp-storage",
+  empty: true
+});
+```

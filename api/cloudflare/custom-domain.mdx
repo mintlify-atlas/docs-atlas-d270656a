@@ -1,0 +1,116 @@
+---
+title: CustomDomain
+description: API reference for Cloudflare Custom Domain resource
+---
+
+# CustomDomain
+
+Configure custom domain for a Cloudflare Worker using the Cloudflare Custom Domains API.
+
+## Props
+
+<ParamField path="name" type="string" required>
+  The domain name to bind to the worker.
+
+  ```ts
+  const domain = await CustomDomain("api-domain", {
+    name: "api.example.com",
+    workerName: worker.name
+  });
+  ```
+</ParamField>
+
+<ParamField path="zoneId" type="string">
+  Cloudflare Zone ID for the domain.
+
+  <Expandable title="default" defaultOpen>
+    Inferred from the domain name
+  </Expandable>
+</ParamField>
+
+<ParamField path="workerName" type="string" required>
+  Name of the worker to bind to the domain.
+</ParamField>
+
+<ParamField path="environment" type="string" default="production">
+  Worker environment (defaults to production).
+</ParamField>
+
+<ParamField path="adopt" type="boolean" default="false">
+  If true, adopt an existing custom domain binding during creation.
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The unique identifier for the Cloudflare domain binding.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The domain name bound to the worker.
+</ResponseField>
+
+<ResponseField name="workerName" type="string">
+  Name of the worker bound to this domain.
+</ResponseField>
+
+<ResponseField name="zoneId" type="string">
+  Cloudflare Zone ID for the domain.
+</ResponseField>
+
+<ResponseField name="environment" type="string">
+  Worker environment.
+</ResponseField>
+
+<ResponseField name="createdAt" type="number">
+  Time at which the domain binding was created.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="number">
+  Time at which the domain binding was last updated.
+</ResponseField>
+
+## Examples
+
+### Basic Custom Domain
+
+```ts
+const worker = await Worker("api", {
+  name: "my-api-worker",
+  entrypoint: "./src/api-worker.ts"
+});
+
+const domain = await CustomDomain("api-domain", {
+  name: "api.example.com",
+  workerName: worker.name
+});
+```
+
+### Custom Domain with Zone ID
+
+```ts
+const domain = await CustomDomain("api-domain", {
+  name: "api.example.com",
+  zoneId: "YOUR_ZONE_ID",
+  workerName: "my-api-worker"
+});
+```
+
+### Adopt Existing Domain
+
+```ts
+const domain = await CustomDomain("api-domain", {
+  name: "api.example.com",
+  workerName: "my-api-worker",
+  adopt: true
+});
+```
+
+### Custom Domain with Worker Domains Prop
+
+```ts
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  domains: ["api.example.com"]
+});
+```

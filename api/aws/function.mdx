@@ -1,0 +1,292 @@
+---
+title: Function
+description: AWS Lambda Function resource for serverless compute
+---
+
+# Function
+
+Creates and manages AWS Lambda functions with support for Node.js runtimes, custom handlers, environment variables, and function URLs. Handles deployment packaging, IAM role stabilization, and function updates.
+
+## Props
+
+<ParamField path="bundle" type="Bundle" required>
+  Bundle for the function. Use `Bundle()` from `alchemy/esbuild` to create a code bundle.
+</ParamField>
+
+<ParamField path="roleArn" type="string" required>
+  ARN of the IAM role that Lambda assumes when executing the function.
+</ParamField>
+
+<ParamField path="handler" type="string" required>
+  Function handler in the format 'file.function'. For Node.js this is typically 'index.handler' or similar.
+</ParamField>
+
+<ParamField path="functionName" type="string">
+  Name of the Lambda function.
+  
+  **Default:** `${app}-${stage}-${id}`
+</ParamField>
+
+<ParamField path="runtime" type="Runtime">
+  Lambda runtime environment for the function.
+  
+  **Default:** `nodejs20.x`
+</ParamField>
+
+<ParamField path="architecture" type="Architecture">
+  CPU architecture for the function.
+  
+  **Default:** `x86_64`
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of the function's purpose.
+</ParamField>
+
+<ParamField path="timeout" type="number">
+  Maximum execution time in seconds.
+  
+  **Default:** `3`
+</ParamField>
+
+<ParamField path="memorySize" type="number">
+  Amount of memory available to the function in MB.
+  
+  **Default:** `128`
+</ParamField>
+
+<ParamField path="environment" type="Record<string, string>">
+  Environment variables available to the function code.
+</ParamField>
+
+<ParamField path="tags" type="Record<string, string>">
+  Resource tags for the function.
+</ParamField>
+
+<ParamField path="url" type="object">
+  Function URL configuration for direct HTTP(S) invocation.
+  
+  <Expandable title="properties">
+    <ParamField path="url.invokeMode" type="'BUFFERED' | 'RESPONSE_STREAM'">
+      Configure type of response for the function URL.
+    </ParamField>
+    
+    <ParamField path="url.authType" type="'AWS_IAM' | 'NONE'">
+      Authentication type for the function URL.
+    </ParamField>
+    
+    <ParamField path="url.cors" type="object">
+      CORS configuration for the function URL.
+      
+      <Expandable title="properties">
+        <ParamField path="url.cors.allowCredentials" type="boolean">
+          Whether to allow credentials in CORS requests.
+        </ParamField>
+        
+        <ParamField path="url.cors.allowHeaders" type="string[]">
+          Allowed headers in CORS requests.
+        </ParamField>
+        
+        <ParamField path="url.cors.allowMethods" type="string[]">
+          Allowed HTTP methods in CORS requests.
+        </ParamField>
+        
+        <ParamField path="url.cors.allowOrigins" type="string[]">
+          Allowed origins in CORS requests.
+        </ParamField>
+        
+        <ParamField path="url.cors.exposeHeaders" type="string[]">
+          Headers exposed to the browser.
+        </ParamField>
+        
+        <ParamField path="url.cors.maxAge" type="number">
+          CORS preflight cache time in seconds.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="layers" type="string[]">
+  Lambda layers for the function. Use the layer ARN.
+</ParamField>
+
+## Output
+
+<ResponseField name="arn" type="string">
+  ARN of the Lambda function.
+</ResponseField>
+
+<ResponseField name="functionName" type="string">
+  Name of the Function.
+</ResponseField>
+
+<ResponseField name="lastModified" type="string">
+  Timestamp of the last function modification.
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  Function version.
+</ResponseField>
+
+<ResponseField name="qualifiedArn" type="string">
+  ARN with version suffix.
+</ResponseField>
+
+<ResponseField name="invokeArn" type="string">
+  ARN for invoking the function through API Gateway.
+</ResponseField>
+
+<ResponseField name="sourceCodeHash" type="string">
+  SHA256 hash of the function code.
+</ResponseField>
+
+<ResponseField name="sourceCodeSize" type="number">
+  Size of the function code in bytes.
+</ResponseField>
+
+<ResponseField name="ephemeralStorageSize" type="number">
+  Size of ephemeral storage (/tmp) in MB.
+</ResponseField>
+
+<ResponseField name="architectures" type="string[]">
+  List of supported CPU architectures.
+</ResponseField>
+
+<ResponseField name="masterArn" type="string">
+  ARN of the master function (Lambda@Edge only).
+</ResponseField>
+
+<ResponseField name="revisionId" type="string">
+  Unique identifier for the current function code/config.
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  Current state of the function.
+</ResponseField>
+
+<ResponseField name="stateReason" type="string">
+  Reason for the current state.
+</ResponseField>
+
+<ResponseField name="stateReasonCode" type="string">
+  Code for the current state reason.
+</ResponseField>
+
+<ResponseField name="lastUpdateStatus" type="string">
+  Status of the last update operation.
+</ResponseField>
+
+<ResponseField name="lastUpdateStatusReason" type="string">
+  Reason for the last update status.
+</ResponseField>
+
+<ResponseField name="lastUpdateStatusReasonCode" type="string">
+  Code for the last update status reason.
+</ResponseField>
+
+<ResponseField name="packageType" type="string">
+  Function package type (Zip or Image).
+</ResponseField>
+
+<ResponseField name="signingProfileVersionArn" type="string">
+  ARN of the signing profile version.
+</ResponseField>
+
+<ResponseField name="signingJobArn" type="string">
+  ARN of the signing job.
+</ResponseField>
+
+<ResponseField name="functionUrl" type="string">
+  Function URL if configured.
+</ResponseField>
+
+## Examples
+
+### Basic Lambda function with minimal configuration
+
+```typescript
+import { Function, Role } from "alchemy/aws";
+import { Bundle } from "alchemy/esbuild";
+
+const role = await Role("lambda-role", {
+  assumeRolePolicy: {
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: { Service: "lambda.amazonaws.com" },
+      Action: "sts:AssumeRole"
+    }]
+  }
+});
+
+const bundle = await Bundle("api-bundle", {
+  entryPoint: "./src/index.ts",
+  outdir: ".out",
+  format: "esm",
+  platform: "node",
+  target: "node20"
+});
+
+const basicFunction = await Function("api-handler", {
+  bundle,
+  roleArn: role.arn,
+  handler: "index.handler",
+  tags: {
+    Environment: "production"
+  }
+});
+```
+
+### Function with environment variables and custom memory/timeout
+
+```typescript
+import { Function } from "alchemy/aws";
+import { Bundle } from "alchemy/esbuild";
+
+const bundle = await Bundle("worker-bundle", {
+  entryPoint: "./src/worker.ts",
+  outdir: ".out",
+  format: "esm"
+});
+
+const configuredFunction = await Function("worker", {
+  bundle,
+  roleArn: role.arn,
+  handler: "worker.process",
+  memorySize: 512,
+  timeout: 30,
+  environment: {
+    QUEUE_URL: queue.url,
+    LOG_LEVEL: "info"
+  }
+});
+```
+
+### Function with a public URL endpoint, CORS and response streaming
+
+```typescript
+import { Function } from "alchemy/aws";
+import { Bundle } from "alchemy/esbuild";
+
+const bundle = await Bundle("api-bundle", {
+  entryPoint: "./src/api.ts",
+  outdir: ".out"
+});
+
+const apiFunction = await Function("public-api", {
+  bundle,
+  roleArn: role.arn,
+  handler: "api.handler",
+  url: {
+    authType: "NONE",
+    invokeMode: "RESPONSE_STREAM",
+    cors: {
+      allowOrigins: ["*"],
+      allowMethods: ["GET", "POST"],
+      allowHeaders: ["content-type"],
+      maxAge: 86400
+    }
+  }
+});
+```

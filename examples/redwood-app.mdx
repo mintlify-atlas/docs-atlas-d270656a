@@ -1,0 +1,235 @@
+---
+title: RedwoodJS on Cloudflare
+description: Deploy a RedwoodJS application to Cloudflare with D1 database
+---
+
+# RedwoodJS on Cloudflare Example
+
+This example demonstrates deploying a RedwoodJS full-stack application to Cloudflare with D1 database integration.
+
+## Features
+
+- **RedwoodJS**: Full-stack React framework
+- **D1 Database**: SQLite database at the edge
+- **Drizzle Migrations**: Type-safe database schema
+- **Local Development**: Integrated dev server
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+npm install @redwoodjs/core
+```
+
+### Create alchemy.run.ts
+
+Create infrastructure with D1 database:
+
+```ts
+import alchemy from "alchemy";
+import { D1Database, Redwood } from "alchemy/cloudflare";
+
+const app = await alchemy("cloudflare-redwood");
+
+const database = await D1Database("database", {
+  name: `${app.name}-${app.stage}-db`,
+  migrationsDir: "drizzle",
+  adopt: true,
+});
+
+export const website = await Redwood("website", {
+  name: `${app.name}-${app.stage}-website`,
+  adopt: true,
+  bindings: {
+    DB: database,
+  },
+  dev: {
+    command: "vite dev --port 5004",
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Create Database Schema
+
+Create `drizzle/schema.ts`:
+
+```ts
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+
+export const posts = sqliteTable("posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+```
+
+### Create Migration
+
+Create `drizzle/0000_init.sql`:
+
+```sql
+CREATE TABLE posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+```
+
+### Use Database in Redwood
+
+Create an API service `api/src/services/posts/posts.ts`:
+
+```ts
+import { db } from 'src/lib/db';
+import { posts } from '../../../drizzle/schema';
+
+export const posts = async () => {
+  return await db.select().from(posts);
+};
+
+export const post = async ({ id }: { id: number }) => {
+  return await db.select().from(posts).where(eq(posts.id, id)).get();
+};
+
+export const createPost = async (input: {
+  title: string;
+  body: string;
+}) => {
+  return await db.insert(posts).values({
+    ...input,
+    createdAt: new Date(),
+  }).returning().get();
+};
+```
+
+### Configure Database Connection
+
+Create `api/src/lib/db.ts`:
+
+```ts
+import { drizzle } from 'drizzle-orm/d1';
+import { context } from '@redwoodjs/graphql-server';
+
+export const db = drizzle(context.env.DB);
+```
+
+### Create GraphQL Schema
+
+Create `api/src/graphql/posts.sdl.ts`:
+
+```ts
+export const schema = gql`
+  type Post {
+    id: Int!
+    title: String!
+    body: String!
+    createdAt: DateTime!
+  }
+
+  type Query {
+    posts: [Post!]! @skipAuth
+    post(id: Int!): Post @skipAuth
+  }
+
+  type Mutation {
+    createPost(title: String!, body: String!): Post! @skipAuth
+  }
+`;
+```
+
+### Deploy
+
+Deploy to Cloudflare:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+For local development:
+
+```bash
+npm exec tsx alchemy.run.ts --local
+```
+
+</Steps>
+
+## Key Features Explained
+
+### D1 Database with Migrations
+
+D1 supports SQL migrations from a directory:
+
+```ts
+const database = await D1Database("database", {
+  name: `${app.name}-${app.stage}-db`,
+  migrationsDir: "drizzle",
+  adopt: true,
+});
+```
+
+### Database Bindings
+
+The database is bound to your Redwood application:
+
+```ts
+bindings: {
+  DB: database,
+}
+```
+
+### Local Development
+
+Integrated with Redwood's dev server:
+
+```ts
+dev: {
+  command: "vite dev --port 5004",
+}
+```
+
+## Database Operations
+
+### Query Data
+
+```ts
+import { db } from 'src/lib/db';
+import { posts } from '../drizzle/schema';
+
+const allPosts = await db.select().from(posts);
+```
+
+### Insert Data
+
+```ts
+const newPost = await db.insert(posts).values({
+  title: "Hello World",
+  body: "My first post",
+  createdAt: new Date(),
+}).returning().get();
+```
+
+### Update Data
+
+```ts
+import { eq } from 'drizzle-orm';
+
+await db.update(posts)
+  .set({ title: "Updated Title" })
+  .where(eq(posts.id, 1));
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-redwood](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-redwood)

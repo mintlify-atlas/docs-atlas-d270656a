@@ -1,0 +1,676 @@
+---
+title: Testing
+description: Write comprehensive tests for your Alchemy infrastructure
+---
+
+# Testing
+
+Alchemy provides built-in testing utilities powered by [Vitest](https://vitest.dev/) for testing infrastructure resources. Tests create real resources, verify their behavior, and clean up automatically.
+
+## Setting Up Tests
+
+Alchemy tests use `alchemy.test()` to create isolated test scopes:
+
+```typescript
+import { describe, expect } from "vitest";
+import { destroy } from "alchemy/test";
+import "alchemy/test/vitest";
+import { Worker } from "alchemy/cloudflare";
+
+const test = alchemy.test(import.meta, {
+  prefix: "test"
+});
+
+describe("Worker", () => {
+  test("creates and deletes a worker", async (scope) => {
+    let worker;
+    
+    try {
+      // Create resource
+      worker = await Worker("test-worker", {
+        script: "export default { fetch() { return new Response('Hello'); } }"
+      });
+      
+      // Verify it was created
+      expect(worker.id).toBe("test-worker");
+      expect(worker.url).toContain("workers.dev");
+      
+      // Test functionality
+      const response = await fetch(worker.url);
+      expect(response.ok).toBe(true);
+      expect(await response.text()).toBe("Hello");
+      
+    } finally {
+      // Always clean up
+      await destroy(scope);
+    }
+  });
+});
+```
+
+## Test Structure
+
+### Test Lifecycle
+
+Alchemy tests follow a consistent pattern:
+
+<Steps>
+
+### Setup: Create Test Scope
+
+Every test gets an isolated scope:
+
+```typescript
+const test = alchemy.test(import.meta, {
+  prefix: "test"  // Prefix for all test resources
+});
+```
+
+### Execute: Create and Test Resources
+
+Create resources and verify their behavior:
+
+```typescript
+test("resource creation", async (scope) => {
+  const resource = await MyResource("test-id", {
+    // props
+  });
+  
+  expect(resource).toMatchObject({
+    // assertions
+  });
+});
+```
+
+### Cleanup: Destroy Resources
+
+Always clean up in a `finally` block:
+
+```typescript
+try {
+  // Create and test resources
+} finally {
+  await destroy(scope);
+}
+```
+
+</Steps>
+
+## Test Configuration
+
+### Test Prefix
+
+Use a unique prefix to avoid conflicts between test runs:
+
+```typescript
+import { BRANCH_PREFIX } from "./util";
+
+const test = alchemy.test(import.meta, {
+  prefix: BRANCH_PREFIX  // e.g., "feat-auth-123"
+});
+
+describe("Resources", () => {
+  test("creates worker", async (scope) => {
+    const worker = await Worker("api", { /* ... */ });
+    // Resource name: "feat-auth-123-test-file-name-api"
+  });
+});
+```
+
+<Tip>
+Use branch names or CI job IDs as prefixes to ensure tests from different branches don't conflict.
+</Tip>
+
+### Test Timeout
+
+Set timeout for long-running tests:
+
+```typescript
+test("deploys large application", async (scope) => {
+  // Test logic
+}, 300000); // 5 minute timeout
+```
+
+### Quiet Mode
+
+Disable logging in tests:
+
+```typescript
+const test = alchemy.test(import.meta, {
+  prefix: "test",
+  quiet: true  // Suppress resource creation logs
+});
+```
+
+## Testing Patterns
+
+### Create, Update, Delete
+
+Test the full resource lifecycle:
+
+```typescript
+test("worker lifecycle", async (scope) => {
+  let worker;
+  
+  try {
+    // CREATE
+    worker = await Worker("api", {
+      script: "export default { fetch() { return new Response('v1'); } }"
+    });
+    
+    expect(worker.id).toBe("api");
+    let response = await fetch(worker.url);
+    expect(await response.text()).toBe("v1");
+    
+    // UPDATE
+    worker = await Worker("api", {
+      script: "export default { fetch() { return new Response('v2'); } }"
+    });
+    
+    response = await fetch(worker.url);
+    expect(await response.text()).toBe("v2");
+    
+  } finally {
+    // DELETE
+    await destroy(scope);
+    
+    // Verify deletion
+    await expect(fetch(worker.url)).rejects.toThrow();
+  }
+});
+```
+
+### Resource Dependencies
+
+Test resources that depend on each other:
+
+```typescript
+test("worker with database", async (scope) => {
+  let db, worker;
+  
+  try {
+    // Create database first
+    db = await D1Database("db", {
+      name: "test-database"
+    });
+    
+    // Create worker that uses database
+    worker = await Worker("api", {
+      entrypoint: "./src/index.ts",
+      bindings: {
+        DB: db
+      }
+    });
+    
+    // Test that binding works
+    const response = await fetch(worker.url + "/users");
+    expect(response.ok).toBe(true);
+    
+  } finally {
+    await destroy(scope);
+  }
+});
+```
+
+### End-to-End Testing
+
+Test complete workflows:
+
+```typescript
+test("complete application stack", async (scope) => {
+  try {
+    // 1. Infrastructure
+    const db = await D1Database("db", { name: "test-db" });
+    const bucket = await R2Bucket("storage", { name: "test-bucket" });
+    const kv = await KVNamespace("cache", { name: "test-cache" });
+    
+    // 2. API Worker
+    const api = await Worker("api", {
+      entrypoint: "./src/api.ts",
+      bindings: { DB: db, BUCKET: bucket, CACHE: kv }
+    });
+    
+    // 3. Frontend
+    const frontend = await Vite("frontend", {
+      bindings: { API: api }
+    });
+    
+    // 4. Test end-to-end flow
+    const response = await fetch(frontend.url + "/api/health");
+    expect(response.ok).toBe(true);
+    
+  } finally {
+    await destroy(scope);
+  }
+});
+```
+
+### Error Handling
+
+Test error conditions:
+
+```typescript
+test("handles invalid configuration", async (scope) => {
+  await expect(async () => {
+    await Worker("invalid", {
+      // Missing required entrypoint
+    });
+  }).rejects.toThrow("entrypoint is required");
+});
+
+test("handles resource conflicts", async (scope) => {
+  try {
+    const worker1 = await Worker("api", {
+      name: "my-worker",
+      script: "export default {}"
+    });
+    
+    // Should fail without adopt: true
+    await expect(async () => {
+      await Worker("api-2", {
+        name: "my-worker",  // Same name
+        script: "export default {}"
+      });
+    }).rejects.toThrow("already exists");
+    
+  } finally {
+    await destroy(scope);
+  }
+});
+```
+
+## Verification Helpers
+
+### Fetch and Expect OK
+
+Create a helper for testing HTTP endpoints:
+
+```typescript
+async function fetchAndExpectOK(url: string) {
+  const response = await fetch(url);
+  expect(response.ok).toBe(true);
+  return response;
+}
+
+test("worker responds successfully", async (scope) => {
+  try {
+    const worker = await Worker("api", {
+      script: "export default { fetch() { return new Response('OK'); } }"
+    });
+    
+    await fetchAndExpectOK(worker.url);
+    
+  } finally {
+    await destroy(scope);
+  }
+});
+```
+
+### Resource Existence Verification
+
+Verify resources are truly deleted:
+
+```typescript
+async function assertWorkerDoesNotExist(api: CloudflareApi, name: string) {
+  const response = await api.get(`/workers/scripts/${name}`);
+  expect(response.status).toBe(404);
+}
+
+test("worker deletion", async (scope) => {
+  const api = createCloudflareApi();
+  let worker;
+  
+  try {
+    worker = await Worker("api", {
+      script: "export default {}"
+    });
+  } finally {
+    await destroy(scope);
+    await assertWorkerDoesNotExist(api, worker.name);
+  }
+});
+```
+
+## Test Hooks
+
+### beforeAll and afterAll
+
+Run setup and teardown for all tests:
+
+```typescript
+const test = alchemy.test(import.meta, {
+  prefix: "test"
+});
+
+let sharedResource;
+
+test.beforeAll(async (scope) => {
+  // Create resources shared across all tests
+  sharedResource = await D1Database("shared-db", {
+    name: "shared-database"
+  });
+});
+
+test.afterAll(async (scope) => {
+  // Clean up shared resources
+  await destroy(scope);
+});
+
+describe("API Tests", () => {
+  test("test 1", async (scope) => {
+    // Use sharedResource
+  });
+  
+  test("test 2", async (scope) => {
+    // Use sharedResource
+  });
+});
+```
+
+## Running Tests
+
+### Run All Tests
+
+```bash
+bun run test
+```
+
+This automatically:
+- Diffs with `main` branch
+- Runs only changed tests
+- Requires you to be on a feature branch
+
+### Run Specific Tests
+
+```bash
+# Run specific file
+bun vitest ./test/cloudflare/worker.test.ts
+
+# Run specific test case
+bun vitest ./test/cloudflare/worker.test.ts -t "creates worker"
+
+# Run all tests in a directory
+bun vitest ./test/cloudflare/
+```
+
+### Watch Mode
+
+Re-run tests on file changes:
+
+```bash
+bun vitest --watch
+```
+
+## Test Environment Variables
+
+Tests require provider credentials:
+
+```bash
+# .env.test
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+CLOUDFLARE_API_KEY=your-api-key
+CLOUDFLARE_EMAIL=your-email
+
+ALCHEMY_PASSWORD=test-password
+```
+
+Load them in your test file:
+
+```typescript
+import "dotenv/config";
+import { describe, expect } from "vitest";
+import "alchemy/test/vitest";
+
+const test = alchemy.test(import.meta, {
+  prefix: "test",
+  password: process.env.ALCHEMY_PASSWORD
+});
+```
+
+## State Storage for Tests
+
+Tests use SQLite by default for state storage:
+
+```typescript
+const test = alchemy.test(import.meta, {
+  prefix: "test",
+  stateStore: (scope) => new SQLiteStateStore(scope, {
+    filename: path.join(scope.dotAlchemy, "test.sqlite")
+  })
+});
+```
+
+Or use other state stores:
+
+```typescript
+import { D1StateStore, CloudflareStateStore } from "alchemy/state";
+
+// D1 Database
+const test = alchemy.test(import.meta, {
+  stateStore: (scope) => new D1StateStore(scope)
+});
+
+// Cloudflare Durable Objects
+const test = alchemy.test(import.meta, {
+  stateStore: (scope) => new CloudflareStateStore(scope)
+});
+```
+
+## Best Practices
+
+<Steps>
+
+### Use Deterministic Resource IDs
+
+Avoid random IDs to make tests idempotent:
+
+```typescript
+// ✅ Good - Deterministic
+const worker = await Worker("test-api", { /* ... */ });
+
+// ❌ Bad - Random IDs
+const worker = await Worker(`test-${Math.random()}`, { /* ... */ });
+```
+
+### Always Use try/finally
+
+Ensure cleanup even when tests fail:
+
+```typescript
+test("resource test", async (scope) => {
+  let resource;
+  
+  try {
+    resource = await MyResource("test", { /* ... */ });
+    // Test logic that might throw
+  } finally {
+    await destroy(scope);
+  }
+});
+```
+
+### Test Create, Update, and Delete
+
+Cover the full lifecycle:
+
+```typescript
+test("full lifecycle", async (scope) => {
+  try {
+    // Create
+    let worker = await Worker("api", { script: "v1" });
+    expect(worker).toBeDefined();
+    
+    // Update
+    worker = await Worker("api", { script: "v2" });
+    expect(worker).toBeDefined();
+    
+  } finally {
+    // Delete
+    await destroy(scope);
+  }
+});
+```
+
+### Use Unique Prefixes
+
+Prevent test conflicts:
+
+```typescript
+import { BRANCH_PREFIX } from "./util";
+
+const test = alchemy.test(import.meta, {
+  prefix: `${BRANCH_PREFIX}-${Date.now()}`
+});
+```
+
+### Verify Resource Deletion
+
+Confirm resources are truly gone:
+
+```typescript
+finally {
+  await destroy(scope);
+  
+  // Verify deletion
+  const response = await api.get(`/resources/${resource.id}`);
+  expect(response.status).toBe(404);
+}
+```
+
+### Use Static Imports
+
+Avoid dynamic imports for better IDE support:
+
+```typescript
+// ✅ Good
+import { Worker } from "alchemy/cloudflare";
+
+// ❌ Avoid
+const { Worker } = await import("alchemy/cloudflare");
+```
+
+</Steps>
+
+## Example: Complete Test Suite
+
+```typescript
+import { describe, expect } from "vitest";
+import { destroy } from "alchemy/test";
+import "alchemy/test/vitest";
+import { Worker, D1Database, R2Bucket } from "alchemy/cloudflare";
+import { BRANCH_PREFIX } from "../util";
+
+const test = alchemy.test(import.meta, {
+  prefix: BRANCH_PREFIX,
+  quiet: true
+});
+
+describe("Application Stack", () => {
+  test("creates full application", async (scope) => {
+    let db, bucket, worker;
+    
+    try {
+      // Create infrastructure
+      db = await D1Database("db", {
+        name: `${BRANCH_PREFIX}-database`
+      });
+      
+      expect(db.id).toBe("db");
+      expect(db.name).toContain(BRANCH_PREFIX);
+      
+      bucket = await R2Bucket("storage", {
+        name: `${BRANCH_PREFIX}-bucket`
+      });
+      
+      expect(bucket.id).toBe("storage");
+      
+      // Create worker with bindings
+      worker = await Worker("api", {
+        script: `
+          export default {
+            async fetch(request, env) {
+              return new Response('OK');
+            }
+          }
+        `,
+        bindings: {
+          DB: db,
+          BUCKET: bucket
+        }
+      });
+      
+      expect(worker.id).toBe("api");
+      expect(worker.url).toBeTruthy();
+      
+      // Test worker responds
+      const response = await fetch(worker.url);
+      expect(response.ok).toBe(true);
+      expect(await response.text()).toBe("OK");
+      
+    } finally {
+      await destroy(scope);
+    }
+  }, 120000); // 2 minute timeout
+  
+  test("handles updates", async (scope) => {
+    let worker;
+    
+    try {
+      // Create v1
+      worker = await Worker("api", {
+        script: "export default { fetch() { return new Response('v1'); } }"
+      });
+      
+      let response = await fetch(worker.url);
+      expect(await response.text()).toBe("v1");
+      
+      // Update to v2
+      worker = await Worker("api", {
+        script: "export default { fetch() { return new Response('v2'); } }"
+      });
+      
+      response = await fetch(worker.url);
+      expect(await response.text()).toBe("v2");
+      
+    } finally {
+      await destroy(scope);
+    }
+  });
+});
+```
+
+## Troubleshooting
+
+### Test Timeouts
+
+Increase timeout for slow resources:
+
+```typescript
+test("slow deployment", async (scope) => {
+  // Test logic
+}, 300000); // 5 minutes
+```
+
+### State Conflicts
+
+Use unique prefixes to avoid conflicts:
+
+```typescript
+const test = alchemy.test(import.meta, {
+  prefix: `${process.env.CI_JOB_ID}-test`
+});
+```
+
+### Cleanup Failures
+
+Manually destroy orphaned resources:
+
+```bash
+bun ./alchemy.run.ts --destroy --stage test-stage
+```
+
+## Next Steps
+
+- [Creating Resources](/guides/creating-resources) - Learn resource creation patterns
+- [Local Development](/guides/local-development) - Test locally before deploying
+- [Custom Providers](/guides/custom-providers) - Build testable custom resources

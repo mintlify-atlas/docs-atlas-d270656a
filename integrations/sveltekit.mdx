@@ -1,0 +1,223 @@
+---
+title: SvelteKit
+description: Deploy SvelteKit applications to Cloudflare Workers with Alchemy
+---
+
+Deploy [SvelteKit](https://kit.svelte.dev/) applications to Cloudflare Workers using the Cloudflare adapter.
+
+## Installation
+
+Install the required dependencies:
+
+```bash
+npm install alchemy @sveltejs/kit @sveltejs/adapter-cloudflare
+```
+
+## Configuration
+
+<Steps>
+
+### Configure SvelteKit Adapter
+
+Add the Alchemy adapter to your `svelte.config.js`:
+
+```js
+import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+import alchemy from "alchemy/cloudflare/sveltekit";
+
+const config = {
+  preprocess: vitePreprocess(),
+  kit: {
+    adapter: alchemy(),
+  },
+};
+
+export default config;
+```
+
+### Create Deployment Script
+
+Create an `alchemy.run.ts` file:
+
+```ts
+import alchemy from "alchemy";
+import { D1Database, KVNamespace, R2Bucket, SvelteKit } from "alchemy/cloudflare";
+
+const app = await alchemy("my-sveltekit-app");
+
+const [db, authStore, storage] = await Promise.all([
+  D1Database("database", {
+    name: `${app.name}-${app.stage}-db`,
+  }),
+  KVNamespace("auth-store", {
+    title: `${app.name}-${app.stage}-auth-store`,
+  }),
+  R2Bucket("storage", {
+    name: `${app.name}-${app.stage}-storage`,
+  }),
+]);
+
+const website = await SvelteKit("website", {
+  bindings: {
+    DB: db,
+    AUTH_STORE: authStore,
+    STORAGE: storage,
+    API_KEY: alchemy.secret.env.API_KEY,
+  },
+});
+
+console.log({
+  url: website.url,
+});
+
+await app.finalize();
+```
+
+### Deploy
+
+Run your deployment script:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Configuration Options
+
+### Properties
+
+- **`bindings`**: Cloudflare bindings (KV, R2, D1, etc.)
+- **`entrypoint`**: Worker entrypoint path
+  - Default: `.svelte-kit/cloudflare/_worker.js`
+- **`assets`**: Static assets directory
+  - Default: `.svelte-kit/cloudflare`
+- **`compatibilityDate`**: Cloudflare compatibility date
+  - Minimum: `2024-09-23` (required for `nodejs_compat`)
+- **`compatibilityFlags`**: Additional compatibility flags
+  - Default: `["nodejs_compat"]`
+
+## Accessing Bindings
+
+Access Cloudflare bindings in your SvelteKit application:
+
+### Server Load Functions
+
+```ts
+// src/routes/+page.server.ts
+import type { PageServerLoad } from "./$types";
+
+export const load: PageServerLoad = async ({ platform }) => {
+  const db = platform?.env.DB;
+  const users = await db?.prepare("SELECT * FROM users").all();
+  
+  return {
+    users: users?.results || [],
+  };
+};
+```
+
+### Server Actions
+
+```ts
+// src/routes/+page.server.ts
+import type { Actions } from "./$types";
+
+export const actions: Actions = {
+  default: async ({ platform, request }) => {
+    const kv = platform?.env.AUTH_STORE;
+    const formData = await request.formData();
+    
+    await kv?.put("session", formData.get("token"));
+    
+    return { success: true };
+  },
+};
+```
+
+### API Routes
+
+```ts
+// src/routes/api/users/+server.ts
+import type { RequestHandler } from "./$types";
+import { json } from "@sveltejs/kit";
+
+export const GET: RequestHandler = async ({ platform }) => {
+  const db = platform?.env.DB;
+  const result = await db?.prepare("SELECT * FROM users").all();
+  
+  return json(result?.results || []);
+};
+```
+
+## Local Development
+
+SvelteKit provides excellent local development support:
+
+- Emulated Cloudflare `platform.env` bindings
+- Hot module replacement
+- Fast refresh
+
+Start the dev server:
+
+```bash
+npm run dev
+```
+
+The platform object is available in all server-side code during development.
+
+## Node.js Compatibility
+
+The SvelteKit resource automatically enables `nodejs_compat` compatibility flag, which provides:
+
+- Node.js built-in modules (`fs`, `path`, `crypto`, etc.)
+- Support for npm packages that depend on Node.js APIs
+- Full SvelteKit feature compatibility
+
+### Minimum Compatibility Date
+
+For `nodejs_compat` support, the compatibility date must be `>= 2024-09-23`:
+
+```ts
+const website = await SvelteKit("website", {
+  compatibilityDate: "2024-09-23",
+});
+```
+
+## TypeScript Configuration
+
+Configure TypeScript for Cloudflare platform types:
+
+```ts
+// src/app.d.ts
+import type { D1Database, KVNamespace, R2Bucket } from "@cloudflare/workers-types";
+
+declare global {
+  namespace App {
+    interface Platform {
+      env: {
+        DB: D1Database;
+        AUTH_STORE: KVNamespace;
+        STORAGE: R2Bucket;
+        API_KEY: string;
+      };
+    }
+  }
+}
+
+export {};
+```
+
+## Deployment Best Practices
+
+- Keep `.svelte-kit` directory in `.gitignore`
+- Use environment variables for secrets via `alchemy.secret.env.X`
+- Test bindings locally using SvelteKit's platform proxy
+- Configure proper TypeScript types for platform bindings
+
+## Related Resources
+
+- [Website](/resources/cloudflare/website) - Base resource for web applications
+- [D1 Database](/resources/cloudflare/d1-database) - SQL database
+- [KV Namespace](/resources/cloudflare/kv-namespace) - Key-value storage
+- [R2 Bucket](/resources/cloudflare/r2-bucket) - Object storage

@@ -1,0 +1,275 @@
+---
+title: PlanetScale
+description: API reference for PlanetScale serverless database resources
+---
+
+# PlanetScale
+
+PlanetScale is a serverless MySQL and PostgreSQL database platform built on Vitess.
+
+## Resources
+
+### Database
+
+Create, manage and delete PlanetScale databases.
+
+<CodeGroup>
+```typescript Basic Database
+import { Database } from "alchemy/planetscale";
+
+const db = await Database("my-app-db", {
+  organization: "my-org",
+  clusterSize: "PS_10"
+});
+```
+
+```typescript Database with Settings
+import { Database } from "alchemy/planetscale";
+
+const db = await Database("my-app-db", {
+  organization: "my-org",
+  region: {
+    slug: "us-east"
+  },
+  clusterSize: "PS_10",
+  requireApprovalForDeploy: true,
+  allowDataBranching: true,
+  automaticMigrations: true
+});
+```
+
+```typescript PostgreSQL Database
+import { Database } from "alchemy/planetscale";
+
+const db = await Database("pg-db", {
+  organization: "my-org",
+  kind: "postgresql",
+  clusterSize: "PS_10",
+  majorVersion: "16",
+  arch: "arm"
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="organization" type="string" default="process.env.PLANETSCALE_ORGANIZATION">
+  The organization name where the database will be created
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name of the database
+</ParamField>
+
+<ParamField path="clusterSize" type="PlanetScaleClusterSize" required>
+  The database cluster size (e.g., PS_10, PS_20, PS_40, PS_80, PS_160, PS_320, PS_400)
+</ParamField>
+
+<ParamField path="kind" type="'mysql' | 'postgresql'" default="mysql">
+  The engine kind for the database
+</ParamField>
+
+<ParamField path="region" type="object">
+  The region where the database will be created
+  <Expandable>
+    <ParamField path="slug" type="string">
+      The slug identifier of the region
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="replicas" type="number">
+  The number of replicas for the database. 0 for non-HA, 2+ for HA
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  Whether to adopt the database if it already exists in PlanetScale
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the database when the resource is destroyed. When false, the database will only be removed from the state but not deleted via API.
+</ParamField>
+
+<ParamField path="requireApprovalForDeploy" type="boolean">
+  Whether or not deploy requests must be approved by a database administrator other than the request creator
+</ParamField>
+
+<ParamField path="restrictBranchRegion" type="boolean">
+  Whether or not to limit branch creation to the same region as the one selected during database creation
+</ParamField>
+
+<ParamField path="insightsRawQueries" type="boolean">
+  Whether or not full queries should be collected from the database
+</ParamField>
+
+<ParamField path="productionBranchWebConsole" type="boolean">
+  Whether or not the web console can be used on the production branch of the database
+</ParamField>
+
+<ParamField path="defaultBranch" type="string" default="main">
+  The default branch of the database
+</ParamField>
+
+<ParamField path="automaticMigrations" type="boolean">
+  Whether or not to copy migration data to new branches and in deploy requests (MySQL only)
+</ParamField>
+
+<ParamField path="migrationFramework" type="string">
+  A migration framework to use on the database (MySQL only)
+</ParamField>
+
+<ParamField path="migrationTableName" type="string">
+  Name of table to use as migration table for the database (MySQL only)
+</ParamField>
+
+<ParamField path="allowDataBranching" type="boolean">
+  Whether or not data branching is allowed on the database (MySQL only)
+</ParamField>
+
+<ParamField path="allowForeignKeyConstraints" type="boolean">
+  Whether or not foreign key constraints are allowed on the database (MySQL only)
+</ParamField>
+
+<ParamField path="majorVersion" type="string">
+  The PostgreSQL major version to use for the database (PostgreSQL only)
+</ParamField>
+
+<ParamField path="arch" type="'x86' | 'arm'">
+  The CPU architecture for the database (PostgreSQL only)
+</ParamField>
+
+#### Returns
+
+<ResponseField name="id" type="string">
+  The unique identifier of the database
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the database
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  The current state of the database
+</ResponseField>
+
+<ResponseField name="defaultBranch" type="string">
+  The default branch name
+</ResponseField>
+
+<ResponseField name="plan" type="string">
+  The plan type
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  Time at which the database was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  Time at which the database was last updated
+</ResponseField>
+
+<ResponseField name="htmlUrl" type="string">
+  HTML URL to access the database
+</ResponseField>
+
+<ResponseField name="organization" type="string">
+  The organization of the database
+</ResponseField>
+
+### Branch
+
+Create or manage a PlanetScale database branch.
+
+<CodeGroup>
+```typescript Basic Branch
+import { Branch } from "alchemy/planetscale";
+
+const branch = await Branch("feature-123", {
+  organization: "my-org",
+  database: "my-database",
+  parentBranch: "main",
+  isProduction: false
+});
+```
+
+```typescript Branch with Backup
+import { Branch } from "alchemy/planetscale";
+
+const branch = await Branch("restored-branch", {
+  organization: "my-org",
+  database: "my-database",
+  parentBranch: "main",
+  backupId: "backup-123",
+  clusterSize: "PS_10",
+  isProduction: true
+});
+```
+</CodeGroup>
+
+#### Props
+
+<ParamField path="database" type="string | Database" required>
+  The database name or Database object
+</ParamField>
+
+<ParamField path="organization" type="string">
+  The organization name. Automatically inferred from the database if the database is provided as an object.
+</ParamField>
+
+<ParamField path="name" type="string" default="${app}-${stage}-${id}">
+  The name of the branch
+</ParamField>
+
+<ParamField path="isProduction" type="boolean" required>
+  Whether or not the branch should be set to a production branch or not
+</ParamField>
+
+<ParamField path="parentBranch" type="string | Branch" default="main">
+  The parent branch name or Branch object
+</ParamField>
+
+<ParamField path="adopt" type="boolean">
+  Whether to adopt an existing branch if it exists. If false and the branch exists, an error will be thrown. If true and the branch exists, it will be updated with the provided properties.
+</ParamField>
+
+<ParamField path="delete" type="boolean" default="true">
+  Whether to delete the branch when the resource is destroyed. When false, the branch will only be removed from the state but not deleted via API.
+</ParamField>
+
+<ParamField path="backupId" type="string">
+  If provided, restores the backup's schema and data to the new branch. Must have restore_production_branch_backup(s) or restore_backup(s) access.
+</ParamField>
+
+<ParamField path="seedData" type="'last_successful_backup'">
+  If provided, restores the last successful backup's schema and data to the new branch. Must have restore_production_branch_backup(s) or restore_backup(s) access, in addition to Data Branching being enabled for the branch.
+</ParamField>
+
+<ParamField path="clusterSize" type="PlanetScaleClusterSize">
+  The database cluster size is required if a backup_id is provided. If the branch is not a production branch, the cluster size MUST be "PS_DEV".
+</ParamField>
+
+<ParamField path="safeMigrations" type="boolean">
+  Enable or disable safe migrations on this branch
+</ParamField>
+
+#### Returns
+
+<ResponseField name="name" type="string">
+  The name of the branch
+</ResponseField>
+
+<ResponseField name="parentBranch" type="string">
+  The name of the parent branch
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  Time at which the branch was created
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string">
+  Time at which the branch was last updated
+</ResponseField>
+
+<ResponseField name="htmlUrl" type="string">
+  HTML URL to access the branch
+</ResponseField>

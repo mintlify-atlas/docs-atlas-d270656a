@@ -1,0 +1,370 @@
+---
+title: Worker
+description: API reference for Cloudflare Worker resource
+---
+
+# Worker
+
+A Cloudflare Worker is a serverless function that runs on Cloudflare's global network.
+
+## Props
+
+<ParamField path="entrypoint" type="string">
+  The entrypoint for the worker script.
+
+  ```ts
+  const worker = await Worker("api", {
+    entrypoint: "./src/worker.ts"
+  });
+  ```
+</ParamField>
+
+<ParamField path="script" type="string">
+  Inline worker script (alternative to `entrypoint`).
+
+  ```ts
+  const worker = await Worker("api", {
+    script: "export default { fetch() { return new Response('Hello'); } }"
+  });
+  ```
+</ParamField>
+
+<ParamField path="name" type="string">
+  Name for the worker.
+
+  <Expandable title="default" defaultOpen>
+    `${app}-${stage}-${id}`
+  </Expandable>
+</ParamField>
+
+<ParamField path="bindings" type="Bindings">
+  Bindings to attach to the worker.
+
+  ```ts
+  const worker = await Worker("api", {
+    entrypoint: "./src/worker.ts",
+    bindings: {
+      BUCKET: bucket,
+      KV: kvNamespace,
+      DB: database
+    }
+  });
+  ```
+</ParamField>
+
+<ParamField path="url" type="boolean" default="false">
+  Whether to enable a workers.dev URL for this worker.
+
+  If true, the worker will be available at `{name}.{subdomain}.workers.dev`
+</ParamField>
+
+<ParamField path="routes" type="(string | RouteConfig)[]">
+  Routes to create for this worker.
+
+  ```ts
+  const worker = await Worker("api", {
+    entrypoint: "./src/worker.ts",
+    routes: [
+      "api.example.com/*",
+      { pattern: "sub.example.com/*", zoneId: "1234567890" }
+    ]
+  });
+  ```
+</ParamField>
+
+<ParamField path="domains" type="(string | DomainConfig)[]">
+  Custom domains to bind to the worker.
+
+  ```ts
+  const worker = await Worker("api", {
+    entrypoint: "./src/worker.ts",
+    domains: [
+      "api.example.com",
+      { domainName: "example.com", zoneId: "1234567890" }
+    ]
+  });
+  ```
+</ParamField>
+
+<ParamField path="compatibilityDate" type="string">
+  The compatibility date for the worker.
+
+  <Expandable title="default" defaultOpen>
+    Automatically pinned to the latest Workers release
+  </Expandable>
+</ParamField>
+
+<ParamField path="compatibilityFlags" type="string[]">
+  The compatibility flags for the worker.
+</ParamField>
+
+<ParamField path="compatibility" type="CompatibilityPreset">
+  Compatibility preset to automatically include common compatibility flags.
+
+  - `"node"`: Includes nodejs_compat flag for Node.js compatibility
+</ParamField>
+
+<ParamField path="crons" type="string[]">
+  Cron expressions for the trigger. Uses standard cron syntax.
+
+  ```ts
+  const worker = await Worker("scheduled", {
+    entrypoint: "./src/scheduled.ts",
+    crons: ['0 0 * * *', '0 12 * * MON']
+  });
+  ```
+</ParamField>
+
+<ParamField path="eventSources" type="EventSource[]">
+  Event sources that this worker will consume.
+
+  ```ts
+  const worker = await Worker("processor", {
+    entrypoint: "./src/processor.ts",
+    bindings: { QUEUE: queue },
+    eventSources: [{
+      queue,
+      settings: {
+        batchSize: 15,
+        maxConcurrency: 3,
+        maxRetries: 5
+      }
+    }]
+  });
+  ```
+</ParamField>
+
+<ParamField path="assets" type="AssetsConfig">
+  Configuration for static assets.
+
+  <Expandable title="properties">
+    <ParamField path="_headers" type="string">
+      Contents of a _headers file (used to attach custom headers on asset responses).
+    </ParamField>
+
+    <ParamField path="_redirects" type="string">
+      Contents of a _redirects file (used to apply redirects or proxy paths).
+    </ParamField>
+
+    <ParamField path="html_handling" type="string" default="auto-trailing-slash">
+      Determines the redirects and rewrites of requests for HTML content.
+
+      Options: `"auto-trailing-slash"` | `"force-trailing-slash"` | `"drop-trailing-slash"` | `"none"`
+    </ParamField>
+
+    <ParamField path="not_found_handling" type="string" default="none">
+      Determines the response when a request does not match a static asset.
+
+      Options: `"none"` | `"404-page"` | `"single-page-application"`
+    </ParamField>
+
+    <ParamField path="run_worker_first" type="boolean | string[]" default="false">
+      When true, requests will always invoke the Worker script.
+      If an array is passed, the worker will be invoked for matching requests.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="placement" type="WorkerPlacement">
+  Placement configuration for the worker.
+
+  <Expandable title="properties">
+    <ParamField path="mode" type="smart">
+      Enable smart placement mode. Cloudflare automatically places your Worker closest to the upstream with the most requests.
+
+      ```ts
+      const worker = await Worker("api", {
+        entrypoint: "./src/worker.ts",
+        placement: { mode: "smart" }
+      });
+      ```
+    </ParamField>
+
+    <ParamField path="region" type="string">
+      Cloud provider region to place your Worker closest to.
+
+      Format: `{provider}:{region}`
+
+      ```ts
+      const worker = await Worker("api", {
+        entrypoint: "./src/worker.ts",
+        placement: { region: "aws:us-east-1" }
+      });
+      ```
+    </ParamField>
+
+    <ParamField path="host" type="string">
+      Host endpoint to probe (TCP/layer 4) for placement.
+
+      Format: `hostname:port`
+
+      ```ts
+      const worker = await Worker("api", {
+        entrypoint: "./src/worker.ts",
+        placement: { host: "my-database.example.com:5432" }
+      });
+      ```
+    </ParamField>
+
+    <ParamField path="hostname" type="string">
+      Hostname to probe (HTTP/layer 7) for placement.
+
+      ```ts
+      const worker = await Worker("api", {
+        entrypoint: "./src/worker.ts",
+        placement: { hostname: "my-api.example.com" }
+      });
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="limits" type="object">
+  Resource limits for the worker.
+
+  <Expandable title="properties">
+    <ParamField path="cpu_ms" type="number" default="30000">
+      The maximum CPU time in milliseconds that the worker can use.
+    </ParamField>
+
+    <ParamField path="subrequests" type="number">
+      The maximum number of subrequests allowed per invocation.
+      Defaults to 50 for free accounts and 10,000 for paid accounts.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="observability" type="WorkerObservability">
+  Specify the observability behavior of the Worker.
+
+  <Expandable title="properties">
+    <ParamField path="enabled" type="boolean" default="true">
+      If observability is enabled for this Worker.
+    </ParamField>
+
+    <ParamField path="headSamplingRate" type="number" default="1">
+      A number between 0 and 1, where 0 indicates zero requests are logged, and 1 indicates every request is logged.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="logpush" type="boolean" default="false">
+  Enable Workers Logpush to export trace events to external destinations.
+
+  Requires a separate Logpush job configuration via the Cloudflare API.
+</ParamField>
+
+<ParamField path="version" type="string">
+  Version label for this worker deployment.
+
+  When specified, the worker will be published as a version with this label instead of updating the live deployment.
+
+  ```ts
+  const worker = await Worker("my-worker", {
+    entrypoint: "./src/worker.ts",
+    version: "pr-123"
+  });
+  ```
+</ParamField>
+
+## Output
+
+<ResponseField name="id" type="string">
+  The ID of the worker.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the worker.
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  The worker's URL if enabled. Format: `{name}.{subdomain}.workers.dev`
+</ResponseField>
+
+<ResponseField name="bindings" type="Bindings">
+  The bindings that were created.
+</ResponseField>
+
+<ResponseField name="routes" type="Route[]">
+  The routes that were created for this worker.
+</ResponseField>
+
+<ResponseField name="domains" type="CustomDomain[]">
+  The custom domains that were created for this worker.
+</ResponseField>
+
+<ResponseField name="compatibilityDate" type="string">
+  The compatibility date for the worker.
+</ResponseField>
+
+<ResponseField name="compatibilityFlags" type="string[]">
+  The compatibility flags for the worker.
+</ResponseField>
+
+## Examples
+
+### Basic HTTP Handler
+
+```ts
+const api = await Worker("api", {
+  name: "api-worker",
+  entrypoint: "./src/api.ts",
+  url: true
+});
+```
+
+### Worker with Bindings
+
+```ts
+const bucket = await R2Bucket("storage");
+const kv = await KVNamespace("cache");
+const db = await D1Database("db");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    BUCKET: bucket,
+    CACHE: kv,
+    DB: db
+  }
+});
+```
+
+### Worker with Custom Domain
+
+```ts
+const worker = await Worker("api", {
+  entrypoint: "./src/api.ts",
+  domains: ["api.example.com"]
+});
+```
+
+### Scheduled Worker
+
+```ts
+const worker = await Worker("scheduled-tasks", {
+  entrypoint: "./src/scheduled.ts",
+  crons: ['* 15 * * *', '0 0 * * *', '0 12 * * MON']
+});
+```
+
+### Queue Consumer
+
+```ts
+const queue = await Queue("tasks");
+
+const worker = await Worker("processor", {
+  entrypoint: "./src/processor.ts",
+  bindings: { QUEUE: queue },
+  eventSources: [{
+    queue,
+    settings: {
+      batchSize: 15,
+      maxConcurrency: 3,
+      maxRetries: 5,
+      maxWaitTimeMs: 2500,
+      retryDelay: 60
+    }
+  }]
+});
+```

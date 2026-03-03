@@ -1,0 +1,465 @@
+---
+title: "Scope"
+description: "Manage resource hierarchies and lifecycle with Alchemy scopes"
+---
+
+# Scope
+
+A Scope represents a hierarchical container for resources in Alchemy. Scopes manage resource state, lifecycle, and provide utilities for resource management. The root scope is created by calling `alchemy()`, and child scopes can be created using `alchemy.run()`.
+
+## Properties
+
+<ResponseField name="name" type="string">
+  The name of the scope.
+</ResponseField>
+
+<ResponseField name="scopeName" type="string">
+  The identifier for this scope level.
+</ResponseField>
+
+<ResponseField name="appName" type="string">
+  The name of the root application.
+</ResponseField>
+
+<ResponseField name="parent" type="Scope | undefined">
+  The parent scope, or undefined if this is the root scope.
+</ResponseField>
+
+<ResponseField name="stage" type="string">
+  The stage name for this scope (e.g., "dev", "prod").
+</ResponseField>
+
+<ResponseField name="phase" type="'up' | 'destroy' | 'read'">
+  The current lifecycle phase.
+</ResponseField>
+
+<ResponseField name="local" type="boolean">
+  Whether resources should be simulated locally.
+</ResponseField>
+
+<ResponseField name="watch" type="boolean">
+  Whether to watch for changes and automatically update resources.
+</ResponseField>
+
+<ResponseField name="quiet" type="boolean">
+  Whether to suppress log output.
+</ResponseField>
+
+<ResponseField name="force" type="boolean">
+  Whether to force resource updates.
+</ResponseField>
+
+<ResponseField name="adopt" type="boolean">
+  Whether to adopt existing resources.
+</ResponseField>
+
+<ResponseField name="password" type="string | undefined">
+  The password used for encrypting secrets in this scope.
+</ResponseField>
+
+<ResponseField name="resources" type="Map<string, PendingResource>">
+  Map of all resources in this scope.
+</ResponseField>
+
+<ResponseField name="children" type="Map<string, Scope>">
+  Map of child scopes.
+</ResponseField>
+
+<ResponseField name="root" type="Scope">
+  The root scope of the application.
+</ResponseField>
+
+## Methods
+
+### createPhysicalName()
+
+Creates a physical name for a resource based on the application, stage, and resource ID.
+
+```typescript
+createPhysicalName(
+  id: string,
+  delimiter?: string,
+  maxLength?: number
+): string
+```
+
+<ParamField path="id" type="string" required>
+  The resource identifier.
+</ParamField>
+
+<ParamField path="delimiter" type="string" default="'-'">
+  The delimiter to use between name components.
+</ParamField>
+
+<ParamField path="maxLength" type="number">
+  Maximum length for the physical name. If exceeded, components will be truncated.
+</ParamField>
+
+**Returns:** A physical name in the format `{appName}-{scope-chain}-{id}-{stage}`
+
+**Example:**
+```typescript
+const name = scope.createPhysicalName("bucket");
+// Returns: "my-app-bucket-dev"
+
+const name = scope.createPhysicalName("bucket", "_", 20);
+// Returns: "my_app_bucket_dev" (truncated if needed)
+```
+
+### fqn()
+
+Generates a fully qualified name for a resource.
+
+```typescript
+fqn(resourceID: string): string
+```
+
+<ParamField path="resourceID" type="string" required>
+  The resource identifier.
+</ParamField>
+
+**Returns:** Fully qualified name in the format `{appName}/{scope-chain}/{resourceID}`
+
+**Example:**
+```typescript
+const fqn = scope.fqn("my-resource");
+// Returns: "my-app/dev/my-resource"
+```
+
+### has()
+
+Checks if a resource with the given ID exists in the scope's state.
+
+```typescript
+has(id: string, type?: string): Promise<boolean>
+```
+
+<ParamField path="id" type="string" required>
+  The resource identifier.
+</ParamField>
+
+<ParamField path="type" type="string">
+  Optional resource type to match.
+</ParamField>
+
+**Returns:** `true` if the resource exists (and matches the type if provided)
+
+### get()
+
+Retrieves a value from the scope's data storage.
+
+```typescript
+get<T>(key: string): Promise<T>
+```
+
+<ParamField path="key" type="string" required>
+  The key to retrieve.
+</ParamField>
+
+**Returns:** The stored value.
+
+### set()
+
+Stores a value in the scope's data storage.
+
+```typescript
+set<T>(key: string, value: T): Promise<void>
+```
+
+<ParamField path="key" type="string" required>
+  The key to store.
+</ParamField>
+
+<ParamField path="value" type="T" required>
+  The value to store.
+</ParamField>
+
+### delete()
+
+Deletes a value from the scope's data storage.
+
+```typescript
+delete(key: string): Promise<void>
+```
+
+<ParamField path="key" type="string" required>
+  The key to delete.
+</ParamField>
+
+### run()
+
+Runs a function within this scope's context.
+
+```typescript
+run<T>(fn: (scope: Scope) => Promise<T>): Promise<T>
+```
+
+<ParamField path="fn" type="function" required>
+  The async function to run within the scope.
+</ParamField>
+
+**Returns:** The result of the function.
+
+**Example:**
+```typescript
+const result = await scope.run(async (scope) => {
+  const resource = await MyResource("id", { prop: "value" });
+  return resource.id;
+});
+```
+
+### finalize()
+
+Finalizes the scope, destroying orphaned resources and cleaning up.
+
+```typescript
+finalize(options?: { force?: boolean; noop?: boolean }): Promise<void>
+```
+
+<ParamField path="options.force" type="boolean" default="false">
+  Force finalization even if not the root scope.
+</ParamField>
+
+<ParamField path="options.noop" type="boolean" default="false">
+  Skip actual deletion operations.
+</ParamField>
+
+**Example:**
+```typescript
+const app = await alchemy("my-app");
+// ... create resources ...
+await app.finalize();
+```
+
+### defer()
+
+Defers execution of a function until the scope finalizes.
+
+```typescript
+defer<T>(fn: () => Promise<T>): Promise<T>
+```
+
+<ParamField path="fn" type="function" required>
+  The async function to defer.
+</ParamField>
+
+**Returns:** A promise that resolves when the deferred function completes.
+
+**Example:**
+```typescript
+const result = scope.defer(async () => {
+  // This runs during finalize
+  return await someAsyncOperation();
+});
+
+// Later...
+await scope.finalize();
+const value = await result; // Now available
+```
+
+### spawn()
+
+Spawns an idempotent process managed by the scope.
+
+```typescript
+spawn<E extends ((line: string) => string | undefined) | undefined>(
+  id: string,
+  options: {
+    command: string;
+    args?: string[];
+    cwd?: string;
+    env?: Record<string, string>;
+    extract?: E;
+  }
+): Promise<E extends undefined ? undefined : string>
+```
+
+<ParamField path="id" type="string" required>
+  Unique identifier for the process.
+</ParamField>
+
+<ParamField path="options.command" type="string" required>
+  The command to execute.
+</ParamField>
+
+<ParamField path="options.args" type="string[]">
+  Command arguments.
+</ParamField>
+
+<ParamField path="options.cwd" type="string">
+  Working directory for the command.
+</ParamField>
+
+<ParamField path="options.env" type="Record<string, string>">
+  Environment variables.
+</ParamField>
+
+<ParamField path="options.extract" type="function">
+  Function to extract a value from process output lines.
+</ParamField>
+
+**Returns:** Extracted value if `extract` is provided, otherwise `undefined`.
+
+**Example:**
+```typescript
+const url = await scope.spawn("dev-server", {
+  command: "npm",
+  args: ["run", "dev"],
+  extract: (line) => {
+    const match = line.match(/Local:\s+(https?:\/\/.+)/);
+    return match?.[1];
+  }
+});
+console.log(`Server running at ${url}`);
+```
+
+### exec()
+
+Executes a command and returns the result.
+
+```typescript
+exec(
+  id: string,
+  command: string
+): Promise<{ exitCode: number; stdout: string; stderr: string }>
+```
+
+<ParamField path="id" type="string" required>
+  Unique identifier for logging.
+</ParamField>
+
+<ParamField path="command" type="string" required>
+  The command to execute.
+</ParamField>
+
+**Returns:** Object containing exit code and output.
+
+### onCleanup()
+
+Registers a cleanup function to run when the process exits.
+
+```typescript
+onCleanup(fn: () => Promise<void>): void
+```
+
+<ParamField path="fn" type="function" required>
+  The async cleanup function.
+</ParamField>
+
+**Example:**
+```typescript
+const proc = spawn('server', ['--port', '3000']);
+scope.onCleanup(async () => {
+  proc.kill();
+  await waitForExit(proc);
+});
+```
+
+## Static Methods
+
+### Scope.current
+
+Gets the current scope from the async context.
+
+```typescript
+static get current(): Scope
+```
+
+**Returns:** The current scope.
+
+**Throws:** Error if not running within an Alchemy scope.
+
+**Example:**
+```typescript
+const scope = Scope.current;
+console.log(scope.stage);
+```
+
+### Scope.root
+
+Gets the root scope of the current application.
+
+```typescript
+static get root(): Scope
+```
+
+**Returns:** The root scope.
+
+## Examples
+
+### Creating a Root Scope
+
+```typescript
+import { alchemy } from "alchemy";
+
+const app = await alchemy("my-app", {
+  stage: "prod",
+  password: process.env.SECRET_PASSPHRASE
+});
+
+console.log(app.stage); // "prod"
+console.log(app.appName); // "my-app"
+
+await app.finalize();
+```
+
+### Creating Child Scopes
+
+```typescript
+const app = await alchemy("my-app");
+
+await alchemy.run("api", async (apiScope) => {
+  const worker = await Worker("api-worker", {
+    entrypoint: "./src/api.ts"
+  });
+
+  console.log(apiScope.fqn("api-worker")); // "my-app/dev/api/api-worker"
+});
+
+await app.finalize();
+```
+
+### Using Scope Data Storage
+
+```typescript
+const app = await alchemy("my-app");
+
+// Store metadata
+await app.set("deployedAt", Date.now());
+await app.set("version", "1.0.0");
+
+// Retrieve metadata
+const deployedAt = await app.get<number>("deployedAt");
+const version = await app.get<string>("version");
+
+console.log(`Deployed v${version} at ${new Date(deployedAt)}`);
+
+await app.finalize();
+```
+
+### Deferred Operations
+
+```typescript
+const app = await alchemy("my-app");
+
+const worker = await Worker("api", {
+  entrypoint: "./src/worker.ts"
+});
+
+// Defer a warmup request until after deployment
+const warmupResult = app.defer(async () => {
+  const response = await fetch(worker.url);
+  return response.status;
+});
+
+await app.finalize();
+
+const status = await warmupResult;
+console.log(`Warmup status: ${status}`);
+```
+
+## Related
+
+- [alchemy()](/api/alchemy) - Create the root scope
+- [alchemy.run()](/api/alchemy#run) - Run code in a child scope
+- [Context](/api/context) - Resource context API

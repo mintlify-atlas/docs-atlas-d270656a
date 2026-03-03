@@ -1,0 +1,285 @@
+---
+title: Cloudflare Worker
+description: Deploy a comprehensive Cloudflare Worker with Durable Objects, Workflows, RPC, R2, Queues, and AI Search
+---
+
+# Cloudflare Worker Example
+
+This example demonstrates a complete Cloudflare Worker application with multiple advanced features including Durable Objects, Workflows, Service Bindings (RPC), R2 Buckets, Queues, and AI Search.
+
+## Features
+
+- **Worker**: Main HTTP handler with multiple bindings
+- **Durable Objects**: Stateful objects with SQLite storage
+- **Workflows**: OFAC workflow processing
+- **RPC Worker**: Service-to-service communication
+- **R2 Bucket**: Object storage
+- **Queue**: Message queue for async processing
+- **AI Search**: Vector search on R2 bucket contents
+
+## Project Setup
+
+<Steps>
+
+### Install Dependencies
+
+```bash
+npm install alchemy
+```
+
+### Create alchemy.run.ts
+
+Create your infrastructure file with all the Cloudflare resources:
+
+```ts
+import alchemy, { type } from "alchemy";
+import {
+  AiSearch,
+  DurableObjectNamespace,
+  Queue,
+  R2Bucket,
+  Worker,
+  Workflow,
+} from "alchemy/cloudflare";
+import fs from "node:fs/promises";
+import type { HelloWorldDO } from "./src/do.ts";
+import type MyRPC from "./src/rpc.ts";
+
+export const app = await alchemy("cloudflare-worker", {
+  // Set local: true when NODE_ENV is "test", indicating we are running in unit tests
+  // warning: must be true|undefiend, not true|false, otherwise defaults won't be appplied
+  local: process.env.NODE_ENV === "test" ? true : undefined,
+});
+
+export const bucket = await R2Bucket("bucket", {
+  empty: true,
+});
+
+export const rag = await AiSearch("rag", {
+  source: bucket,
+});
+
+export const queue = await Queue<{
+  name: string;
+  email: string;
+}>("queue", {
+  name: `${app.name}-${app.stage}-queue`,
+});
+
+export const rpc = await Worker("rpc", {
+  name: `${app.name}-${app.stage}-rpc`,
+  entrypoint: "./src/rpc.ts",
+  rpc: type<MyRPC>,
+});
+
+export const worker = await Worker("worker", {
+  name: `${app.name}-${app.stage}-worker`,
+  entrypoint: "./src/worker.ts",
+  bindings: {
+    BUCKET: bucket,
+    QUEUE: queue,
+    WORKFLOW: Workflow("OFACWorkflow", {
+      className: "OFACWorkflow",
+      workflowName: "ofac-workflow",
+    }),
+    DO: DurableObjectNamespace<HelloWorldDO>("HelloWorldDO", {
+      className: "HelloWorldDO",
+      sqlite: true,
+    }),
+    RPC: rpc,
+  },
+  url: true,
+  eventSources: [
+    {
+      queue,
+      settings: {
+        maxWaitTimeMs: 1000,
+        batchSize: 10,
+      },
+    },
+  ],
+  bundle: {
+    metafile: true,
+    format: "esm",
+    target: "es2020",
+  },
+});
+
+// Test R2 operations
+await bucket.put("test.txt", "Hello, world!");
+const content = await (await bucket.get("test.txt"))?.text();
+
+if (content !== "Hello, world!") {
+  throw new Error("Content is not correct");
+}
+
+const testFile = await fs.readFile("test-file.txt");
+await bucket.put("test-file.txt", testFile);
+
+console.log(worker.url);
+
+await app.finalize();
+```
+
+### Create Worker Handler
+
+Create `src/worker.ts` with your main worker logic:
+
+```ts
+import { env } from "cloudflare:workers";
+import type { queue, worker } from "../alchemy.run.ts";
+export * from "./do.js";
+export * from "./workflow.js";
+
+export default {
+  async fetch(_request: Request) {
+    await env.QUEUE.send({
+      name: "John Doe",
+      email: "john.doe@example.com",
+    });
+
+    const obj = env.DO.get(env.DO.idFromName("foo"));
+    await obj.increment();
+    await obj.fetch("https://example.com");
+
+    await env.RPC.hello("John Doe");
+
+    return new Response("Ok");
+  },
+  async queue(batch: typeof queue.Batch, _env: typeof worker.Env) {
+    for (const message of batch.messages) {
+      console.log(message);
+      message.ack();
+    }
+    batch.ackAll();
+  },
+};
+```
+
+### Create Durable Object
+
+Create `src/do.ts` for stateful Durable Object logic:
+
+```ts
+import { DurableObject } from "cloudflare:workers";
+
+/**
+ * A simple Hello World Durable Object
+ */
+export class HelloWorldDO extends DurableObject {
+  async increment() {
+    // Get the current count from storage or initialize to 0
+    let count = (await this.ctx.storage.get("count")) || 0;
+
+    // Store the updated count
+    await this.ctx.storage.put("count", count);
+
+    return count;
+  }
+
+  /**
+   * Handle HTTP requests to the Durable Object
+   */
+  async fetch(_request: Request): Promise<Response> {
+    const count = await this.increment();
+
+    // Return a response with the count
+    return new Response(
+      JSON.stringify({
+        message: "Hello World from Durable Object!",
+        count: count,
+        timestamp: new Date().toISOString(),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+  }
+}
+```
+
+### Create RPC Worker
+
+Create `src/rpc.ts` for service-to-service RPC:
+
+```ts
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+export default class MyRPC extends WorkerEntrypoint {
+  /**
+   * Hello world
+   */
+  async hello(name: string) {
+    return `Hello, ${name}!`;
+  }
+  async fetch() {
+    return new Response("Hello from Worker B");
+  }
+}
+```
+
+### Deploy
+
+Run your alchemy.run.ts to deploy:
+
+```bash
+npm exec tsx alchemy.run.ts
+```
+
+</Steps>
+
+## Key Features Explained
+
+### Durable Objects with SQLite
+
+The example uses Durable Objects with SQLite storage enabled:
+
+```ts
+DO: DurableObjectNamespace<HelloWorldDO>("HelloWorldDO", {
+  className: "HelloWorldDO",
+  sqlite: true,
+})
+```
+
+### Queue Event Source
+
+The worker is configured to process queue messages:
+
+```ts
+eventSources: [
+  {
+    queue,
+    settings: {
+      maxWaitTimeMs: 1000,
+      batchSize: 10,
+    },
+  },
+]
+```
+
+### AI Search on R2
+
+Vector search is enabled on the R2 bucket:
+
+```ts
+export const rag = await AiSearch("rag", {
+  source: bucket,
+});
+```
+
+### RPC Service Binding
+
+Workers can communicate via typed RPC:
+
+```ts
+export const rpc = await Worker("rpc", {
+  entrypoint: "./src/rpc.ts",
+  rpc: type<MyRPC>,
+});
+```
+
+## Source Code
+
+View the complete source code: [examples/cloudflare-worker](https://github.com/sam-goodwin/alchemy/tree/main/examples/cloudflare-worker)

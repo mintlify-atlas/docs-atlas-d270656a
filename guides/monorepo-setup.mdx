@@ -1,0 +1,721 @@
+---
+title: Monorepo Setup
+description: Set up Alchemy in a monorepo with multiple applications and shared infrastructure
+---
+
+# Monorepo Setup
+
+Alchemy works seamlessly in **monorepo** setups, allowing you to manage multiple applications and shared infrastructure in a single repository. This guide shows you how to structure and deploy a monorepo with Alchemy.
+
+## Monorepo Structure
+
+A typical Alchemy monorepo looks like this:
+
+```
+my-monorepo/
+  apps/
+    frontend/
+      alchemy.run.ts
+      src/
+      package.json
+    backend/
+      alchemy.run.ts
+      src/
+      package.json
+    analytics/
+      alchemy.run.ts
+      src/
+      package.json
+  package.json          # Root package.json
+  turbo.json            # Turborepo config (optional)
+  tsconfig.json         # Shared TypeScript config
+  .env.example
+```
+
+## Setting Up a Monorepo
+
+<Steps>
+
+### Create Root Package
+
+Initialize a monorepo workspace:
+
+<CodeGroup>
+
+```json package.json (npm/bun)
+{
+  "name": "my-monorepo",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*"
+    ],
+    "catalog": {
+      "alchemy": "latest",
+      "typescript": "^5.8.3"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "deploy": "turbo run deploy",
+    "destroy": "turbo run destroy"
+  },
+  "devDependencies": {
+    "alchemy": "catalog:",
+    "turbo": "^2.5.6",
+    "typescript": "catalog:"
+  }
+}
+```
+
+```json package.json (pnpm)
+{
+  "name": "my-monorepo",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b",
+    "deploy": "turbo run deploy",
+    "destroy": "turbo run destroy"
+  },
+  "devDependencies": {
+    "alchemy": "latest",
+    "turbo": "^2.5.6",
+    "typescript": "^5.8.3"
+  }
+}
+```
+
+</CodeGroup>
+
+### Configure Turborepo
+
+Create `turbo.json` for orchestrating deployments:
+
+```json turbo.json
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "deploy": {
+      "dependsOn": ["^deploy"],
+      "cache": false
+    },
+    "dev": {
+      "persistent": true,
+      "cache": false
+    },
+    "analytics#destroy": {
+      "cache": false,
+      "dependsOn": ["frontend#destroy"]
+    },
+    "backend#destroy": {
+      "cache": false,
+      "dependsOn": ["frontend#destroy"]
+    },
+    "frontend#destroy": {
+      "cache": false
+    }
+  }
+}
+```
+
+<Note>
+The `dependsOn` configuration ensures resources are destroyed in the correct order, with frontend destroyed last.
+</Note>
+
+### Create Application Packages
+
+Each app has its own `alchemy.run.ts` and can export resources:
+
+<CodeGroup>
+
+```typescript apps/backend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker, D1Database } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("backend");
+
+const db = await D1Database("db");
+
+// Export for use in other apps
+export const backend = await Worker("worker", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    DB: db,
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+if (import.meta.main) {
+  console.log({ url: backend.url });
+}
+
+await app.finalize();
+```
+
+```typescript apps/analytics/alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("analytics");
+
+// Export for use in other apps
+export const analytics = await Worker("worker", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+if (import.meta.main) {
+  console.log({ url: analytics.url });
+}
+
+await app.finalize();
+```
+
+```typescript apps/frontend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Vite } from "alchemy/cloudflare";
+// Import resources from other apps
+import { analytics } from "analytics/alchemy";
+import { backend } from "backend/alchemy";
+
+const app = await alchemy("frontend");
+
+export const frontend = await Vite("website", {
+  bindings: {
+    backend,      // Use backend worker
+    analytics     // Use analytics worker
+  }
+});
+
+console.log({
+  url: frontend.url
+});
+
+await app.finalize();
+```
+
+</CodeGroup>
+
+### Configure Package Exports
+
+Each app package.json should export the alchemy.run.ts:
+
+```json apps/backend/package.json
+{
+  "name": "backend",
+  "type": "module",
+  "exports": {
+    "./alchemy": "./alchemy.run.ts"
+  },
+  "scripts": {
+    "deploy": "bun ./alchemy.run.ts",
+    "destroy": "bun ./alchemy.run.ts --destroy"
+  },
+  "dependencies": {
+    "alchemy": "catalog:"
+  }
+}
+```
+
+</Steps>
+
+## Resource Sharing Between Apps
+
+Apps can import and use resources from other apps:
+
+### Export Resources
+
+```typescript apps/backend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker, D1Database } from "alchemy/cloudflare";
+
+const app = await alchemy("backend");
+
+const db = await D1Database("db", {
+  name: "shared-database"
+});
+
+// Export both the worker and database
+export const backend = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: { DB: db }
+});
+
+export const database = db;
+
+await app.finalize();
+```
+
+### Import and Use Resources
+
+```typescript apps/frontend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Vite } from "alchemy/cloudflare";
+import { backend, database } from "backend/alchemy";
+
+const app = await alchemy("frontend");
+
+const frontend = await Vite("website", {
+  bindings: {
+    API: backend,        // Reference to backend worker
+    DB: database         // Direct access to backend's database
+  }
+});
+
+await app.finalize();
+```
+
+<Tip>
+Alchemy automatically handles resource dependencies and creates them in the correct order.
+</Tip>
+
+## Deployment
+
+### Deploy All Apps
+
+Deploy all applications in dependency order:
+
+```bash
+# Using Turborepo
+bun run deploy
+
+# Or manually
+cd apps/backend && bun ./alchemy.run.ts
+cd apps/analytics && bun ./alchemy.run.ts
+cd apps/frontend && bun ./alchemy.run.ts
+```
+
+Turborepo ensures:
+- Dependencies are deployed first
+- Apps are deployed in parallel when possible
+- Failures are handled gracefully
+
+### Deploy Specific App
+
+```bash
+cd apps/backend
+bun ./alchemy.run.ts
+```
+
+### Deploy with Stage
+
+```bash
+bun run deploy -- --stage production
+```
+
+## Destroying Resources
+
+### Destroy All Apps
+
+```bash
+bun run destroy
+```
+
+This destroys resources in reverse dependency order:
+1. Frontend (destroys last)
+2. Backend and Analytics (can destroy in parallel)
+
+### Destroy Specific App
+
+```bash
+cd apps/backend
+bun ./alchemy.run.ts --destroy
+```
+
+<Warning>
+Be careful when destroying apps with shared resources. Other apps may depend on them.
+</Warning>
+
+## Environment Variables
+
+### Shared Environment Variables
+
+Use a root `.env` file for shared configuration:
+
+```bash .env
+# Shared credentials
+ALCHEMY_PASSWORD=shared-password
+CLOUDFLARE_API_KEY=your-api-key
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+
+# Shared secrets
+API_KEY=shared-api-key
+DATABASE_URL=postgres://...
+```
+
+### App-Specific Environment Variables
+
+Each app can have its own `.env.local`:
+
+```bash apps/backend/.env.local
+# Backend-specific configuration
+BACKEND_PORT=3000
+BACKEND_LOG_LEVEL=debug
+```
+
+### Loading Environment Variables
+
+<CodeGroup>
+
+```typescript apps/backend/alchemy.run.ts
+import "dotenv/config";  // Loads from root .env
+import alchemy from "alchemy";
+
+// Access shared environment variables
+const app = await alchemy("backend", {
+  password: process.env.ALCHEMY_PASSWORD
+});
+```
+
+```typescript With local overrides
+import { config } from "dotenv";
+import path from "node:path";
+
+// Load root .env first
+config({ path: path.resolve(import.meta.dirname, "../../.env") });
+
+// Override with local .env
+config({ path: path.resolve(import.meta.dirname, ".env.local") });
+
+import alchemy from "alchemy";
+```
+
+</CodeGroup>
+
+## Stages and Environments
+
+### Per-Stage Deployments
+
+Deploy different stages of the monorepo:
+
+```bash
+# Development
+bun run deploy -- --stage dev
+
+# Staging
+bun run deploy -- --stage staging
+
+# Production
+bun run deploy -- --stage production
+```
+
+### Environment-Specific Configuration
+
+```typescript apps/backend/alchemy.run.ts
+import alchemy from "alchemy";
+
+const app = await alchemy("backend");
+const stage = app.stage;  // "dev", "staging", or "production"
+
+const worker = await Worker("api", {
+  entrypoint: "./src/index.ts",
+  bindings: {
+    // Environment-specific configuration
+    LOG_LEVEL: stage === "production" ? "error" : "debug",
+    API_URL: stage === "production" 
+      ? "https://api.example.com"
+      : "https://staging-api.example.com"
+  }
+});
+
+await app.finalize();
+```
+
+## State Management
+
+Each application maintains its own state:
+
+```
+.alchemy/
+  backend/
+    dev/
+      state.json
+    production/
+      state.json
+  frontend/
+    dev/
+      state.json
+    production/
+      state.json
+  analytics/
+    dev/
+      state.json
+    production/
+      state.json
+```
+
+<Note>
+State is isolated per application and stage, allowing independent deployments.
+</Note>
+
+## Development Workflow
+
+### Local Development
+
+Run all apps locally:
+
+```bash
+# Using Turborepo
+bun run dev
+
+# Or manually
+cd apps/backend && bun --watch ./alchemy.run.ts --local &
+cd apps/analytics && bun --watch ./alchemy.run.ts --local &
+cd apps/frontend && bun --watch ./alchemy.run.ts --local
+```
+
+### Watch Mode
+
+Each app can run in watch mode independently:
+
+<CodeGroup>
+
+```json apps/backend/package.json
+{
+  "scripts": {
+    "dev": "bun --watch ./alchemy.run.ts --local",
+    "deploy": "bun ./alchemy.run.ts",
+    "destroy": "bun ./alchemy.run.ts --destroy"
+  }
+}
+```
+
+```json Root package.json
+{
+  "scripts": {
+    "dev": "turbo run dev",
+    "deploy": "turbo run deploy",
+    "destroy": "turbo run destroy"
+  }
+}
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<Steps>
+
+### Use Consistent Naming
+
+Name apps consistently:
+
+```
+apps/
+  api/         # Backend API
+  web/         # Frontend web app
+  admin/       # Admin dashboard
+  workers/     # Background workers
+```
+
+### Export Shared Resources
+
+Only export resources that other apps need:
+
+```typescript
+// Export public API
+export const backend = await Worker("api", { /* ... */ });
+
+// Don't export internal resources
+const internalDb = await D1Database("internal", { /* ... */ });
+```
+
+### Document Dependencies
+
+Document which apps depend on which:
+
+```typescript apps/frontend/alchemy.run.ts
+/**
+ * Frontend application
+ * 
+ * Dependencies:
+ * - backend (API worker)
+ * - analytics (Analytics worker)
+ */
+import { backend } from "backend/alchemy";
+import { analytics } from "analytics/alchemy";
+```
+
+### Use Turborepo for Orchestration
+
+Configure dependency graph in `turbo.json`:
+
+```json
+{
+  "tasks": {
+    "deploy": {
+      "dependsOn": ["^deploy"]  // Deploy dependencies first
+    }
+  }
+}
+```
+
+### Separate Concerns
+
+Keep apps focused:
+
+```
+apps/
+  api/          # REST API
+  graphql/      # GraphQL API
+  web/          # User-facing web app
+  admin/        # Admin dashboard
+  cron/         # Scheduled tasks
+```
+
+</Steps>
+
+## Example: Complete Monorepo
+
+Here's a complete example monorepo:
+
+<CodeGroup>
+
+```json package.json
+{
+  "name": "monorepo",
+  "private": true,
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "turbo run dev",
+    "deploy": "tsc -b && turbo run deploy --ui=stream",
+    "destroy": "tsc -b && turbo run destroy --ui=stream"
+  },
+  "workspaces": {
+    "packages": ["apps/*"],
+    "catalog": {
+      "alchemy": "latest",
+      "typescript": "^5.8.3"
+    }
+  },
+  "devDependencies": {
+    "alchemy": "catalog:",
+    "turbo": "^2.5.6",
+    "typescript": "catalog:"
+  }
+}
+```
+
+```typescript apps/backend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker, D1Database } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("backend");
+
+const db = await D1Database("db");
+
+export const backend = await Worker("worker", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    DB: db,
+    API_KEY: alchemy.secret.env.API_KEY,
+    key: "value"
+  }
+});
+
+if (import.meta.main) {
+  console.log({ url: backend.url });
+}
+
+await app.finalize();
+```
+
+```typescript apps/analytics/alchemy.run.ts
+import alchemy from "alchemy";
+import { Worker } from "alchemy/cloudflare";
+import path from "node:path";
+
+const app = await alchemy("analytics");
+
+export const analytics = await Worker("worker", {
+  entrypoint: path.join(import.meta.dirname, "src", "index.ts"),
+  bindings: {
+    API_KEY: alchemy.secret.env.API_KEY
+  }
+});
+
+if (import.meta.main) {
+  console.log({ url: analytics.url });
+}
+
+await app.finalize();
+```
+
+```typescript apps/frontend/alchemy.run.ts
+import alchemy from "alchemy";
+import { Vite } from "alchemy/cloudflare";
+import { analytics } from "analytics/alchemy";
+import { backend } from "backend/alchemy";
+
+const app = await alchemy("frontend");
+
+export const frontend = await Vite("website", {
+  bindings: {
+    backend,
+    analytics
+  }
+});
+
+console.log({
+  url: frontend.url
+});
+
+await app.finalize();
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+### Circular Dependencies
+
+Avoid circular imports between apps:
+
+```typescript
+// ❌ Bad: frontend imports backend, backend imports frontend
+// apps/backend/alchemy.run.ts
+import { frontend } from "frontend/alchemy";
+
+// apps/frontend/alchemy.run.ts
+import { backend } from "backend/alchemy";
+```
+
+Solution: Create a shared package for common resources.
+
+### Import Errors
+
+Ensure package exports are configured:
+
+```json apps/backend/package.json
+{
+  "exports": {
+    "./alchemy": "./alchemy.run.ts"
+  }
+}
+```
+
+### Deployment Order
+
+Use Turborepo's `dependsOn` to control order:
+
+```json turbo.json
+{
+  "tasks": {
+    "frontend#deploy": {
+      "dependsOn": ["backend#deploy", "analytics#deploy"]
+    }
+  }
+}
+```
+
+## Next Steps
+
+- [Deployment](/guides/deployment) - Deploy your monorepo to production
+- [Testing](/guides/testing) - Test your monorepo applications
+- [Creating Resources](/guides/creating-resources) - Learn more about resource creation
